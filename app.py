@@ -536,14 +536,18 @@ def trigger_scrape():
     """Generates 10-20 mock King County properties and adds them to the custom Queue."""
     num_new = random.randint(10, 20)
     for _ in range(num_new):
+        # Make prices end in 000, 500, or 900 for realism
+        base_price = random.randint(20, 200) * 10000
+        price = base_price + random.choice([0, 500, 900, -100])
+        
         prop = {
-            "price": random.randint(200000, 2000000),
-            "bedrooms": random.randint(2, 6),
-            "bathrooms": round(random.uniform(1.0, 5.0), 2),
-            "sqft_living": random.randint(1000, 5000),
-            "sqft_lot": random.randint(2000, 10000),
-            "floors": random.randint(1, 3),
-            "yr_built": random.randint(1950, 2020),
+            "price": price,
+            "bedrooms": random.randint(1, 6),
+            "bathrooms": random.choice([1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 4.5]),
+            "sqft_living": random.randint(100, 500) * 10,
+            "sqft_lot": random.randint(200, 1000) * 10,
+            "floors": random.choice([1.0, 1.5, 2.0, 2.5, 3.0]),
+            "yr_built": random.randint(1950, 2023),
             "lat": round(random.uniform(47.1, 47.8), 6),
             "long": round(random.uniform(-122.5, -121.7), 6),
         }
