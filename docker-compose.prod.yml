@@ -1,0 +1,26 @@
+# docker-compose.prod.yml — Hetzner CAX (ARM64) production deployment
+# ─────────────────────────────────────────────────────────────────────────────
+# Usage on Hetzner:
+#   docker compose -f docker-compose.prod.yml up -d --build
+# ─────────────────────────────────────────────────────────────────────────────
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      platforms:
+        - linux/arm64
+    image: realestate-api:latest
+    container_name: realestate_api
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    restart: unless-stopped
+    mem_limit: 512m
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 90s

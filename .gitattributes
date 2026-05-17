@@ -1,0 +1,4 @@
+# .gitattributes — normalize line endings across OS
+* text=auto eol=lf
+*.bat text eol=crlf
+*.cmd text eol=crlf

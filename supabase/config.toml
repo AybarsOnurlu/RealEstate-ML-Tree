@@ -1,0 +1,13 @@
+# supabase/config.toml
+# ──────────────────────────────────────────────────────────────────────────
+# Minimal Supabase project config for GitHub integration / migrations runner.
+# The GitHub integration reads migrations from supabase/migrations/ and
+# applies them in timestamp order whenever this file exists.
+#
+# Full config reference:
+#   https://supabase.com/docs/reference/cli/config
+# ──────────────────────────────────────────────────────────────────────────
+
+[project]
+# Replace with your actual Supabase project ref (found in Project Settings → General)
+# project_id = "lgntbptzgzvqbtcsjkih"
