@@ -7,9 +7,8 @@ Stack:
   - scikit-learn  : RandomForestRegressor for price prediction
   - supabase-py   : PostgreSQL (Supabase) data source
 
-Schema (California Housing dataset — full columns):
-  longitude, latitude, housing_median_age, total_rooms, total_bedrooms,
-  population, households, median_income, median_house_value, ocean_proximity
+Schema (King County House Sales dataset):
+  price, bedrooms, bathrooms, sqft_living, sqft_lot, floors, yr_built, lat, long
 
 Endpoints:
   GET  /health     → liveness check + tree/model status
@@ -71,16 +70,14 @@ supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 # Features used for RandomForest training & prediction
 # NOTE: these must exactly match the column names in the Property dataclass
 FEATURE_NAMES = [
-    "latitude",
-    "longitude",
-    "housing_median_age",
-    "total_rooms",
-    "total_bedrooms",
-    "population",
-    "households",
-    "median_income",
+    "bedrooms",
+    "bathrooms",
+    "sqft_living",
+    "yr_built",
+    "lat",
+    "long",
 ]
-TARGET = "median_house_value"
+TARGET = "price"
 
 # ---------------------------------------------------------------------------
 # Supabase helpers
@@ -119,16 +116,15 @@ def fetch_all_properties() -> List[Property]:
         try:
             prop = Property(
                 id=str(row["id"]),
-                longitude=float(row["longitude"]),
-                latitude=float(row["latitude"]),
-                housing_median_age=float(row["housing_median_age"]),
-                total_rooms=float(row["total_rooms"]),
-                total_bedrooms=float(row["total_bedrooms"]),
-                population=float(row["population"]),
-                households=float(row["households"]),
-                median_income=float(row["median_income"]),
-                median_house_value=float(row["median_house_value"]),
-                ocean_proximity=str(row.get("ocean_proximity", "")),
+                price=float(row["price"]),
+                bedrooms=float(row["bedrooms"]),
+                bathrooms=float(row["bathrooms"]),
+                sqft_living=float(row["sqft_living"]),
+                sqft_lot=float(row["sqft_lot"]),
+                floors=float(row["floors"]),
+                yr_built=float(row["yr_built"]),
+                lat=float(row["lat"]),
+                long=float(row["long"]),
             )
             properties.append(prop)
         except (KeyError, TypeError, ValueError) as exc:
@@ -236,7 +232,7 @@ app = FastAPI(
     description=(
         "Spatial property search powered by a **custom KD-Tree** (Haversine distance, "
         "built from scratch — no scipy/rtree) and price prediction via "
-        "**Random Forest Regressor**. Data: California Housing dataset (~20K records) "
+        "**Random Forest Regressor**. Data: King County House Sales dataset (~21K records) "
         "sourced from Supabase."
     ),
     version="2.0.0",
@@ -257,28 +253,25 @@ app.add_middleware(
 
 class PropertyResponse(BaseModel):
     id: str
-    longitude: float
-    latitude: float
-    housing_median_age: float
-    total_rooms: float
-    total_bedrooms: float
-    population: float
-    households: float
-    median_income: float
-    median_house_value: float
-    ocean_proximity: str
+    price: float
+    bedrooms: float
+    bathrooms: float
+    sqft_living: float
+    sqft_lot: float
+    floors: float
+    yr_built: float
+    lat: float
+    long: float
     distance_km: Optional[float] = Field(None, description="Distance from query point (km)")
 
 
 class PredictRequest(BaseModel):
-    latitude: float          = Field(..., example=37.88)
-    longitude: float         = Field(..., example=-122.23)
-    housing_median_age: float = Field(..., ge=0, example=41.0)
-    total_rooms: float        = Field(..., gt=0, example=880.0)
-    total_bedrooms: float     = Field(..., gt=0, example=129.0)
-    population: float         = Field(..., gt=0, example=322.0)
-    households: float         = Field(..., gt=0, example=126.0)
-    median_income: float      = Field(..., gt=0, example=8.3252)
+    lat: float         = Field(..., example=47.5112)
+    long: float        = Field(..., example=-122.257)
+    bedrooms: float    = Field(..., ge=0, example=3.0)
+    bathrooms: float   = Field(..., ge=0, example=2.25)
+    sqft_living: float = Field(..., gt=0, example=2570.0)
+    yr_built: float    = Field(..., gt=0, example=1951.0)
 
 
 class PredictResponse(BaseModel):
@@ -361,13 +354,13 @@ def search(
     _require_tree()
 
     raw = kd_tree.search_within_radius(lat, lon, radius_km)
-    raw.sort(key=lambda p: kd_tree.haversine(lat, lon, p.latitude, p.longitude))
+    raw.sort(key=lambda p: kd_tree.haversine(lat, lon, p.lat, p.long))
     raw = raw[:limit]
 
     return [
         PropertyResponse(
             **p.__dict__,
-            distance_km=round(kd_tree.haversine(lat, lon, p.latitude, p.longitude), 4),
+            distance_km=round(kd_tree.haversine(lat, lon, p.lat, p.long), 4),
         )
         for p in raw
     ]
@@ -408,9 +401,8 @@ def knn(
 )
 def predict(request: PredictRequest):
     """
-    Predicts `median_house_value` using the trained Random Forest Regressor.
-    Features: latitude, longitude, housing_median_age, total_rooms,
-    total_bedrooms, population, households, median_income.
+    Predicts `price` using the trained Random Forest Regressor.
+    Features: bedrooms, bathrooms, sqft_living, yr_built, lat, long.
     """
     _require_model()
 
@@ -506,7 +498,7 @@ def benchmark(
     t1 = time.perf_counter()
     bf_results = [
         p for p in all_props
-        if KDTree.haversine(lat, lon, p.latitude, p.longitude) <= radius_km
+        if KDTree.haversine(lat, lon, p.lat, p.long) <= radius_km
     ]
     brute_ms = (time.perf_counter() - t1) * 1000
 

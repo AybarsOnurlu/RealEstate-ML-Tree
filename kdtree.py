@@ -5,10 +5,9 @@ Implemented from scratch (no third-party spatial libraries).
 Axes: axis-0 = latitude, axis-1 = longitude
 Distance metric: Haversine (great-circle distance in km)
 
-Schema aligned with the full California Housing dataset:
-  longitude, latitude, housing_median_age, total_rooms,
-  total_bedrooms, population, households, median_income,
-  median_house_value, ocean_proximity
+Schema aligned with the King County House Sales dataset:
+  price, bedrooms, bathrooms, sqft_living, sqft_lot, floors,
+  yr_built, lat, long
 """
 
 import math
@@ -23,18 +22,17 @@ from typing import List, Optional, Tuple
 
 @dataclass
 class Property:
-    """Represents a single real-estate district block from the California Housing dataset."""
+    """Represents a single real-estate property from the King County House Sales dataset."""
     id: str
-    longitude: float
-    latitude: float
-    housing_median_age: float
-    total_rooms: float
-    total_bedrooms: float
-    population: float
-    households: float
-    median_income: float
-    median_house_value: float
-    ocean_proximity: str
+    price: float
+    bedrooms: float
+    bathrooms: float
+    sqft_living: float
+    sqft_lot: float
+    floors: float
+    yr_built: float
+    lat: float
+    long: float
 
 
 # ---------------------------------------------------------------------------
@@ -48,7 +46,7 @@ class KDNode:
 
     def __init__(self, property: Property, axis: int):
         self.property: Property = property
-        self.axis: int = axis          # 0 → split on latitude, 1 → split on longitude
+        self.axis: int = axis          # 0 → split on lat, 1 → split on long
         self.left:  Optional["KDNode"] = None
         self.right: Optional["KDNode"] = None
 
@@ -59,7 +57,7 @@ class KDNode:
 
 class KDTree:
     """
-    A 2-dimensional KD-Tree keyed on (latitude, longitude).
+    A 2-dimensional KD-Tree keyed on (lat, long).
 
     Public API
     ----------
@@ -106,7 +104,7 @@ class KDTree:
     @staticmethod
     def _coord(prop: Property, axis: int) -> float:
         """Return the relevant coordinate for the given splitting axis."""
-        return prop.latitude if axis == 0 else prop.longitude
+        return prop.lat if axis == 0 else prop.long
 
     # ------------------------------------------------------------------
     # Build — O(n log n)
@@ -193,18 +191,18 @@ class KDTree:
             return
 
         # Check current node
-        dist = self.haversine(lat, lon, node.property.latitude, node.property.longitude)
+        dist = self.haversine(lat, lon, node.property.lat, node.property.long)
         if dist <= radius_km:
             results.append(node.property)
 
         # Compute signed difference along splitting axis
         axis = node.axis
         if axis == 0:
-            diff    = lat - node.property.latitude
+            diff    = lat - node.property.lat
             # 1° latitude ≈ 111.32 km (constant everywhere)
             diff_km = abs(diff) * 111.32
         else:
-            diff    = lon - node.property.longitude
+            diff    = lon - node.property.long
             # 1° longitude ≈ 111.32 · cos(lat) km
             diff_km = abs(diff) * 111.32 * math.cos(math.radians(lat))
 
@@ -241,7 +239,7 @@ class KDTree:
             if node is None:
                 return
 
-            dist = self.haversine(lat, lon, node.property.latitude, node.property.longitude)
+            dist = self.haversine(lat, lon, node.property.lat, node.property.long)
 
             if len(heap) < k:
                 heapq.heappush(heap, (-dist, id(node), node.property))

@@ -1,21 +1,19 @@
 """
-seed_supabase.py — California Housing Dataset → Supabase `properties` table
+seed_supabase.py — King County House Sales Dataset → Supabase `properties` table
 ==============================================================================
-Downloads the Kaggle dataset and bulk-inserts all ~20,640 records
-using the FULL original column names (no proxy transformations).
+Downloads the Kaggle dataset and bulk-inserts all ~21,613 records.
 
 Target Supabase table schema:
-  id                 UUID (auto-generated)
-  longitude          FLOAT8
-  latitude           FLOAT8
-  housing_median_age FLOAT8
-  total_rooms        FLOAT8
-  total_bedrooms     FLOAT8
-  population         FLOAT8
-  households         FLOAT8
-  median_income      FLOAT8
-  median_house_value FLOAT8
-  ocean_proximity    TEXT
+  id          UUID (auto-generated)
+  price       FLOAT8
+  bedrooms    FLOAT8
+  bathrooms   FLOAT8
+  sqft_living FLOAT8
+  sqft_lot    FLOAT8
+  floors      FLOAT8
+  yr_built    FLOAT8
+  lat         FLOAT8
+  long        FLOAT8
 
 Usage:
   python seed_supabase.py
@@ -51,7 +49,7 @@ SUPABASE_KEY: str = os.getenv("SUPABASE_KEY", "")
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Seed Supabase `properties` table with full California Housing data."
+        description="Seed Supabase `properties` table with King County House Sales data."
     )
     parser.add_argument(
         "--chunk-size", type=int, default=1000,
@@ -72,14 +70,14 @@ def parse_args() -> argparse.Namespace:
 
 def download_dataset() -> pd.DataFrame:
     """Download the Kaggle dataset and return it as a DataFrame."""
-    print("[INFO] Downloading California Housing dataset from Kaggle ...")
-    dataset_path = kagglehub.dataset_download("camnugent/california-housing-prices")
-    csv_path = os.path.join(dataset_path, "housing.csv")
+    print("[INFO] Downloading King County House Sales dataset from Kaggle ...")
+    dataset_path = kagglehub.dataset_download("harlfoxem/housesalesprediction")
+    csv_path = os.path.join(dataset_path, "kc_house_data.csv")
 
     if not os.path.exists(csv_path):
         for root, _, files in os.walk(dataset_path):
             for f in files:
-                if f == "housing.csv":
+                if f.endswith(".csv"):
                     csv_path = os.path.join(root, f)
                     break
 
@@ -95,37 +93,28 @@ def download_dataset() -> pd.DataFrame:
 def transform(df: pd.DataFrame) -> list[dict]:
     """
     Clean the dataset and map directly to the Supabase schema.
-    All original column names are preserved — no proxy transformations.
-
-    Cleaning steps:
-      - Drop rows with NaN total_bedrooms (~207 / 20640 rows)
-      - Round floats to 6 decimal places for geographic coords
-      - Cast all numeric types explicitly
     """
     print("[INFO] Transforming data ...")
 
+    # Drop any rows with essential missing values (if any)
     original_count = len(df)
-    df = df.dropna(subset=["total_bedrooms"]).copy()
+    df = df.dropna(subset=["price", "lat", "long"]).copy()
     dropped = original_count - len(df)
     if dropped:
-        print(f"[WARN]  Dropped {dropped} rows with null total_bedrooms.")
-
-    # Normalise ocean_proximity (strip whitespace, uppercase)
-    df["ocean_proximity"] = df["ocean_proximity"].str.strip().str.upper()
+        print(f"[WARN]  Dropped {dropped} rows with null target or location values.")
 
     records = []
     for _, row in df.iterrows():
         records.append({
-            "longitude":          round(float(row["longitude"]),   6),
-            "latitude":           round(float(row["latitude"]),    6),
-            "housing_median_age": float(row["housing_median_age"]),
-            "total_rooms":        float(row["total_rooms"]),
-            "total_bedrooms":     float(row["total_bedrooms"]),
-            "population":         float(row["population"]),
-            "households":         float(row["households"]),
-            "median_income":      round(float(row["median_income"]), 4),
-            "median_house_value": float(row["median_house_value"]),
-            "ocean_proximity":    str(row["ocean_proximity"]),
+            "price":       float(row["price"]),
+            "bedrooms":    float(row["bedrooms"]),
+            "bathrooms":   float(row["bathrooms"]),
+            "sqft_living": float(row["sqft_living"]),
+            "sqft_lot":    float(row["sqft_lot"]),
+            "floors":      float(row["floors"]),
+            "yr_built":    float(row["yr_built"]),
+            "lat":         round(float(row["lat"]), 6),
+            "long":        round(float(row["long"]), 6),
         })
 
     print(f"[OK]   {len(records):,} records ready for upload.\n")

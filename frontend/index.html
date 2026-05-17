@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Real Estate Search & Prediction</title>
+    
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+    
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+    <!-- Main Map Container -->
+    <div id="map"></div>
+
+    <!-- UI Overlay / Sidebar -->
+    <div id="ui-panel" class="glass-panel">
+        <h1 class="app-title">Real Estate Explorer</h1>
+        <p class="app-subtitle">Powered by KD-Tree & Random Forest</p>
+
+        <!-- Mode Toggle -->
+        <div class="mode-toggle">
+            <button id="btn-mode-search" class="toggle-btn active">Radius Search</button>
+            <button id="btn-mode-predict" class="toggle-btn">Price Prediction</button>
+        </div>
+
+        <!-- Radius Search Controls -->
+        <div id="panel-search" class="control-section active">
+            <h3>Search Properties</h3>
+            <p class="instruction">Click anywhere on the map to find properties within the radius.</p>
+            
+            <div class="slider-container">
+                <label for="radius-slider">Radius: <span id="radius-value">5</span> km</label>
+                <input type="range" id="radius-slider" min="1" max="50" value="5" class="slider">
+            </div>
+            
+            <div id="search-results-summary" class="results-summary">
+                Click map to search.
+            </div>
+        </div>
+
+        <!-- Price Prediction Controls -->
+        <div id="panel-predict" class="control-section">
+            <h3>Predict House Price</h3>
+            <p class="instruction">Click the map to select a location, then fill the details below.</p>
+            
+            <form id="predict-form" class="predict-form">
+                <div class="form-row">
+                    <div class="input-group">
+                        <label>Lat</label>
+                        <input type="number" id="pred-lat" step="0.0001" readonly placeholder="Click map">
+                    </div>
+                    <div class="input-group">
+                        <label>Lng</label>
+                        <input type="number" id="pred-lng" step="0.0001" readonly placeholder="Click map">
+                    </div>
+                </div>
+                
+                <div class="form-row">
+                    <div class="input-group">
+                        <label>Bedrooms</label>
+                        <input type="number" id="pred-beds" value="3" min="1" step="1" required>
+                    </div>
+                    <div class="input-group">
+                        <label>Bathrooms</label>
+                        <input type="number" id="pred-baths" value="2" min="0" step="0.25" required>
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="input-group">
+                        <label>Sqft Living</label>
+                        <input type="number" id="pred-sqft" value="2000" min="1" required>
+                    </div>
+                    <div class="input-group">
+                        <label>Year Built</label>
+                        <input type="number" id="pred-year" value="1990" min="1900" required>
+                    </div>
+                </div>
+                
+                <button type="submit" class="submit-btn" id="btn-predict" disabled>Estimate Price</button>
+            </form>
+            
+            <div id="prediction-result" class="prediction-result hidden">
+                <h4>Estimated Value</h4>
+                <div class="price-tag" id="price-value">$0</div>
+            </div>
+        </div>
+        
+        <div id="loading-spinner" class="spinner hidden"></div>
+    </div>
+
+    <!-- Leaflet JS -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+    <!-- App JS -->
+    <script src="app.js"></script>
+</body>
+</html>
