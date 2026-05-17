@@ -370,3 +370,15 @@ h3 {
     font-family: monospace;
     min-height: 40px;
 }
+
+/* Live Scraper Pulsing Marker */
+.live-marker {
+    animation: pulse 1.5s infinite;
+    transform-origin: center;
+}
+
+@keyframes pulse {
+    0% { stroke-width: 2px; stroke-opacity: 1; }
+    50% { stroke-width: 8px; stroke-opacity: 0.3; }
+    100% { stroke-width: 2px; stroke-opacity: 1; }
+}

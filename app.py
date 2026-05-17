@@ -580,7 +580,8 @@ def process_queue():
         return {
             "message": f"Successfully processed and inserted {len(inserted_ids)} properties.",
             "undo_stack_size": undo_stack.size(),
-            "new_tree_size": kd_tree.size
+            "new_tree_size": kd_tree.size,
+            "inserted_properties": inserted_rows
         }
     except Exception as exc:
         logger.error("Failed to process queue to DB: %s", exc)

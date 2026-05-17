@@ -5,6 +5,7 @@ let map;
 let markers = [];
 let searchCircle = null;
 let currentClickMarker = null;
+let liveScrapedMarkerStacks = []; // Array of Arrays to match backend LIFO Stack
 
 // DOM Elements
 const btnModeSearch = document.getElementById('btn-mode-search');
@@ -285,6 +286,32 @@ async function handleProcessQueue() {
             throw new Error(errData.detail || 'Failed to process queue');
         }
         const data = await response.json();
+        
+        let newMarkers = [];
+        if (data.inserted_properties && data.inserted_properties.length > 0) {
+            data.inserted_properties.forEach(prop => {
+                const marker = L.circleMarker([prop.lat, prop.long], {
+                    radius: 8,
+                    fillColor: '#10b981', // Emerald green
+                    color: '#047857',
+                    weight: 2,
+                    opacity: 1,
+                    fillOpacity: 0.9,
+                    className: 'live-marker'
+                }).addTo(map);
+
+                marker.bindPopup(`
+                    <h4 style="color:#10b981;">🚨 LIVE SCRAPED LISTING!</h4>
+                    <p><strong>Value:</strong> ${currencyFormatter.format(prop.price)}</p>
+                    <p><strong>Bedrooms:</strong> ${prop.bedrooms}</p>
+                    <p><strong>Bathrooms:</strong> ${prop.bathrooms}</p>
+                    <p><strong>Sqft:</strong> ${prop.sqft_living}</p>
+                `);
+                newMarkers.push(marker);
+            });
+            liveScrapedMarkerStacks.push(newMarkers);
+        }
+
         updateScraperLog(`${data.message}<br>Tree Size: ${data.new_tree_size}`);
     } catch (error) {
         updateScraperLog(error.message, true);
@@ -303,6 +330,13 @@ async function handleUndoScrape() {
             throw new Error(errData.detail || 'Failed to undo scrape');
         }
         const data = await response.json();
+
+        // Remove from map to match LIFO stack
+        if (liveScrapedMarkerStacks.length > 0) {
+            let lastBatch = liveScrapedMarkerStacks.pop();
+            lastBatch.forEach(marker => map.removeLayer(marker));
+        }
+
         updateScraperLog(`${data.message}<br>Tree Size: ${data.new_tree_size}`);
     } catch (error) {
         updateScraperLog(error.message, true);
