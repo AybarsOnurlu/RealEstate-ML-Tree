@@ -165,7 +165,7 @@ def rebuild_tree_and_retrain(properties: List[Property]) -> None:
         [[getattr(p, f) for f in FEATURE_NAMES] for p in properties],
         dtype=np.float64,
     )
-    y = np.array([p.median_house_value for p in properties], dtype=np.float64)
+    y = np.array([getattr(p, TARGET) for p in properties], dtype=np.float64)
 
     # Train / test split for unbiased metrics
     X_train, X_test, y_train, y_test = train_test_split(
