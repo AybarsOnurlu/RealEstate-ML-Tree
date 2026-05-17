@@ -24,6 +24,8 @@ import os
 import time
 import logging
 import random
+import pandas as pd
+import kagglehub
 from contextlib import asynccontextmanager
 from typing import Any, Dict, List, Optional
 
@@ -68,6 +70,15 @@ supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 # Scraper Data Structures
 scrape_queue = PropertyQueue()
 undo_stack = ScraperUndoStack()
+
+# Load Real Dataset for Scraper Simulation
+scraper_df = None
+try:
+    _path = kagglehub.dataset_download("harlfoxem/housesalesprediction")
+    _csv_path = os.path.join(_path, "kc_house_data.csv")
+    scraper_df = pd.read_csv(_csv_path)
+except Exception as e:
+    logger.error("Failed to load Kaggle dataset for scraper: %s", e)
 
 # ---------------------------------------------------------------------------
 # ML Feature configuration
@@ -535,23 +546,41 @@ def benchmark(
 def trigger_scrape():
     """Generates 10-20 mock King County properties and adds them to the custom Queue."""
     num_new = random.randint(10, 20)
-    for _ in range(num_new):
-        # Make prices end in 000, 500, or 900 for realism
-        base_price = random.randint(20, 200) * 10000
-        price = base_price + random.choice([0, 500, 900, -100])
-        
-        prop = {
-            "price": price,
-            "bedrooms": random.randint(1, 6),
-            "bathrooms": random.choice([1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 4.5]),
-            "sqft_living": random.randint(100, 500) * 10,
-            "sqft_lot": random.randint(200, 1000) * 10,
-            "floors": random.choice([1.0, 1.5, 2.0, 2.5, 3.0]),
-            "yr_built": random.randint(1950, 2023),
-            "lat": round(random.uniform(47.1, 47.8), 6),
-            "long": round(random.uniform(-122.5, -121.7), 6),
-        }
-        scrape_queue.enqueue(prop)
+    
+    if scraper_df is not None and not scraper_df.empty:
+        # Fetch actual real estate data from the dataset
+        sample = scraper_df.sample(n=num_new)
+        for _, row in sample.iterrows():
+            prop = {
+                "price": float(row["price"]),
+                "bedrooms": float(row["bedrooms"]),
+                "bathrooms": float(row["bathrooms"]),
+                "sqft_living": float(row["sqft_living"]),
+                "sqft_lot": float(row["sqft_lot"]),
+                "floors": float(row["floors"]),
+                "yr_built": float(row["yr_built"]),
+                "lat": float(row["lat"]),
+                "long": float(row["long"]),
+            }
+            scrape_queue.enqueue(prop)
+    else:
+        # Fallback if dataset fails
+        for _ in range(num_new):
+            base_price = random.randint(20, 200) * 10000
+            price = base_price + random.choice([0, 500, 900, -100])
+            
+            prop = {
+                "price": price,
+                "bedrooms": random.randint(1, 6),
+                "bathrooms": random.choice([1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 4.5]),
+                "sqft_living": random.randint(100, 500) * 10,
+                "sqft_lot": random.randint(200, 1000) * 10,
+                "floors": random.choice([1.0, 1.5, 2.0, 2.5, 3.0]),
+                "yr_built": random.randint(1950, 2023),
+                "lat": round(random.uniform(47.1, 47.8), 6),
+                "long": round(random.uniform(-122.5, -121.7), 6),
+            }
+            scrape_queue.enqueue(prop)
     
     return {"message": f"{num_new} properties scraped and queued.", "queue_size": scrape_queue.size()}
 
