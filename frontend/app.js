@@ -10,6 +10,8 @@ let liveScrapedMarkerStacks = []; // Array of Arrays to match backend LIFO Stack
 // DOM Elements
 const btnModeSearch = document.getElementById('btn-mode-search');
 const btnModePredict = document.getElementById('btn-mode-predict');
+const btnDarkMode = document.getElementById('btn-dark-mode');
+let isDarkMode = false;
 const panelSearch = document.getElementById('panel-search');
 const panelPredict = document.getElementById('panel-predict');
 const radiusSlider = document.getElementById('radius-slider');
@@ -81,6 +83,38 @@ function setupEventListeners() {
     btnProcessQueue.addEventListener('click', handleProcessQueue);
     btnUndoScrape.addEventListener('click', handleUndoScrape);
     btnClearScraped.addEventListener('click', handleClearScraped);
+    btnDarkMode.addEventListener('click', toggleDarkMode);
+}
+
+function toggleDarkMode() {
+    isDarkMode = !isDarkMode;
+    document.body.classList.toggle('dark-mode', isDarkMode);
+    btnDarkMode.textContent = isDarkMode ? '☀️' : '🌙';
+    
+    // Switch tile layer
+    const tileUrl = isDarkMode 
+        ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
+        : 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png';
+    
+    // Remove old tile layers
+    map.eachLayer(layer => {
+        if (layer instanceof L.TileLayer) {
+            map.removeLayer(layer);
+        }
+    });
+
+    L.tileLayer(tileUrl, {
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+        subdomains: 'abcd',
+        maxZoom: 20
+    }).addTo(map);
+    
+    // Ensure tile layer stays at the bottom
+    map.eachLayer(layer => {
+        if (layer instanceof L.TileLayer) {
+            layer.bringToBack();
+        }
+    });
 }
 
 function switchMode(mode) {

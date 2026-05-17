@@ -21,8 +21,13 @@
 
     <!-- UI Overlay / Sidebar -->
     <div id="ui-panel" class="glass-panel">
-        <h1 class="app-title">Real Estate Explorer</h1>
-        <p class="app-subtitle">Powered by KD-Tree & Random Forest</p>
+        <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+            <div>
+                <h1 class="app-title">Real Estate Explorer</h1>
+                <p class="app-subtitle">Powered by KD-Tree & Random Forest</p>
+            </div>
+            <button id="btn-dark-mode" style="background:none; border:none; cursor:pointer; font-size:1.5rem; transition: transform 0.3s;" title="Toggle Dark Mode">🌙</button>
+        </div>
 
         <!-- Mode Toggle -->
         <div class="mode-toggle">

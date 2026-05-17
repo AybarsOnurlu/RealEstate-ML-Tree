@@ -6,11 +6,35 @@
     --border-glass: rgba(255, 255, 255, 0.3);
     --text-main: #1F2937;
     --text-muted: #6B7280;
+    --bg-surface: white;
+    --bg-input: white;
+    --bg-input-readonly: #f3f4f6;
+    --border-input: rgba(0,0,0,0.1);
+    --btn-admin-bg: #f3f4f6;
+    --btn-admin-hover: #e5e7eb;
+    --bg-slider: rgba(255, 255, 255, 0.6);
+
     --shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
     --shadow-hover: 0 20px 35px rgba(0, 0, 0, 0.15);
     --radius: 16px;
     --transition: all 0.3s ease;
 }
+body.dark-mode {
+    --primary: #818CF8;
+    --primary-hover: #6366F1;
+    --bg-glass: rgba(17, 24, 39, 0.85);
+    --border-glass: rgba(255, 255, 255, 0.1);
+    --text-main: #F9FAFB;
+    --text-muted: #9CA3AF;
+    --bg-surface: #374151;
+    --bg-input: #1F2937;
+    --bg-input-readonly: #111827;
+    --border-input: rgba(255,255,255,0.2);
+    --btn-admin-bg: #374151;
+    --btn-admin-hover: #4B5563;
+    --bg-slider: rgba(31, 41, 55, 0.6);
+}
+
 
 * {
     box-sizing: border-box;
@@ -103,7 +127,7 @@ h3 {
 /* Mode Toggle Tabs */
 .mode-toggle {
     display: flex;
-    background: rgba(0, 0, 0, 0.05);
+    background: var(--border-input);
     border-radius: 12px;
     padding: 4px;
     margin-bottom: 24px;
@@ -123,7 +147,7 @@ h3 {
 }
 
 .toggle-btn.active {
-    background: white;
+    background: var(--bg-surface);
     color: var(--primary);
     box-shadow: 0 2px 8px rgba(0,0,0,0.05);
 }
@@ -145,7 +169,7 @@ h3 {
 
 /* Radius Slider */
 .slider-container {
-    background: rgba(255, 255, 255, 0.6);
+    background: var(--bg-slider);
     padding: 16px;
     border-radius: 12px;
     border: 1px solid rgba(0,0,0,0.05);
@@ -204,11 +228,11 @@ h3 {
 .input-group input {
     width: 100%;
     padding: 10px;
-    border: 1px solid rgba(0,0,0,0.1);
+    border: 1px solid var(--border-input);
     border-radius: 8px;
     font-family: inherit;
     font-size: 0.9rem;
-    background: white;
+    background: var(--bg-surface);
     transition: var(--transition);
 }
 
@@ -219,7 +243,7 @@ h3 {
 }
 
 .input-group input[readonly] {
-    background: #f3f4f6;
+    background: var(--btn-admin-bg);
     color: #9ca3af;
     cursor: not-allowed;
 }
@@ -337,9 +361,9 @@ h3 {
 
 .admin-btn {
     padding: 10px;
-    background: #f3f4f6;
+    background: var(--btn-admin-bg);
     color: var(--text-main);
-    border: 1px solid rgba(0,0,0,0.1);
+    border: 1px solid var(--border-input);
     border-radius: 8px;
     font-size: 0.9rem;
     font-weight: 600;
@@ -348,7 +372,7 @@ h3 {
 }
 
 .admin-btn:hover {
-    background: #e5e7eb;
+    background: var(--btn-admin-hover);
 }
 
 .undo-btn {
@@ -374,7 +398,7 @@ h3 {
 .scraper-log {
     font-size: 0.85rem;
     color: var(--text-muted);
-    background: rgba(0,0,0,0.03);
+    background: var(--border-input);
     padding: 10px;
     border-radius: 8px;
     font-family: monospace;
@@ -408,4 +432,12 @@ h3 {
 .scraped-link:hover {
     color: #3730A3;
     text-decoration: underline;
+}
+
+body.dark-mode .leaflet-popup-content-wrapper, body.dark-mode .leaflet-popup-tip {
+    background: var(--bg-glass);
+    color: var(--text-main);
+}
+body.dark-mode .leaflet-popup-content p {
+    color: var(--text-main);
 }
