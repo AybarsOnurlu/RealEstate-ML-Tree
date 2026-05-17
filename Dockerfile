@@ -39,7 +39,7 @@ RUN pip install --upgrade pip --no-cache-dir \
     && pip install --no-cache-dir -r requirements.txt
 
 # ── Application source ────────────────────────────────────────────────────────
-COPY app.py kdtree.py ./
+COPY app.py kdtree.py structures.py ./
 
 # Transfer ownership to the non-root user
 RUN chown -R appuser:appgroup /app
