@@ -23,6 +23,7 @@ Endpoints:
 import os
 import time
 import logging
+import random
 from contextlib import asynccontextmanager
 from typing import Any, Dict, List, Optional
 
@@ -36,6 +37,7 @@ from sklearn.metrics import mean_squared_error, r2_score, mean_absolute_error
 from supabase import create_client, Client
 
 from kdtree import KDTree, Property
+from structures import PropertyQueue, ScraperUndoStack
 
 # ---------------------------------------------------------------------------
 # Logging
@@ -62,6 +64,10 @@ kd_tree: KDTree = KDTree()
 rf_model: Optional[RandomForestRegressor] = None
 model_metrics: Dict[str, Any] = {}          # populated after training
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+
+# Scraper Data Structures
+scrape_queue = PropertyQueue()
+undo_stack = ScraperUndoStack()
 
 # ---------------------------------------------------------------------------
 # ML Feature configuration
@@ -516,3 +522,95 @@ def benchmark(
         brute_force_results=len(bf_results),
         results_match=(len(kd_results) == len(bf_results)),
     )
+
+# ---------------------------------------------------------------------------
+# Live Scraper Endpoints
+# ---------------------------------------------------------------------------
+
+@app.get(
+    "/scrape/trigger",
+    summary="Mock a live scraper finding new properties",
+    tags=["Live Scraper"],
+)
+def trigger_scrape():
+    """Generates 10-20 mock King County properties and adds them to the custom Queue."""
+    num_new = random.randint(10, 20)
+    for _ in range(num_new):
+        prop = {
+            "price": random.randint(200000, 2000000),
+            "bedrooms": random.randint(2, 6),
+            "bathrooms": round(random.uniform(1.0, 5.0), 2),
+            "sqft_living": random.randint(1000, 5000),
+            "sqft_lot": random.randint(2000, 10000),
+            "floors": random.randint(1, 3),
+            "yr_built": random.randint(1950, 2020),
+            "lat": round(random.uniform(47.1, 47.8), 6),
+            "long": round(random.uniform(-122.5, -121.7), 6),
+        }
+        scrape_queue.enqueue(prop)
+    
+    return {"message": f"{num_new} properties scraped and queued.", "queue_size": scrape_queue.size()}
+
+@app.post(
+    "/scrape/process",
+    summary="Process queue and bulk insert to DB",
+    tags=["Live Scraper"],
+)
+def process_queue():
+    """Dequeues all mocked properties, inserts to Supabase, and updates Tree/Model."""
+    if scrape_queue.is_empty():
+        return {"message": "Queue is empty. Call /scrape/trigger first."}
+    
+    batch = []
+    while not scrape_queue.is_empty():
+        batch.append(scrape_queue.dequeue())
+        
+    try:
+        response = supabase.table("properties").insert(batch).execute()
+        inserted_rows = response.data
+        inserted_ids = [row["id"] for row in inserted_rows]
+        
+        # Push to Undo Stack
+        undo_stack.push(inserted_ids)
+        
+        # Resync Tree and Model
+        props = fetch_all_properties()
+        rebuild_tree_and_retrain(props)
+        
+        return {
+            "message": f"Successfully processed and inserted {len(inserted_ids)} properties.",
+            "undo_stack_size": undo_stack.size(),
+            "new_tree_size": kd_tree.size
+        }
+    except Exception as exc:
+        logger.error("Failed to process queue to DB: %s", exc)
+        raise HTTPException(status_code=500, detail=str(exc))
+
+@app.post(
+    "/scrape/undo",
+    summary="Undo the last processed scraper batch",
+    tags=["Live Scraper"],
+)
+def undo_scrape():
+    """Pops the last inserted batch IDs from the Stack and deletes them from DB."""
+    if undo_stack.is_empty():
+        return {"message": "Undo stack is empty. Nothing to undo."}
+        
+    try:
+        last_batch_ids = undo_stack.pop()
+        
+        # Delete from Supabase
+        supabase.table("properties").delete().in_("id", last_batch_ids).execute()
+        
+        # Resync
+        props = fetch_all_properties()
+        rebuild_tree_and_retrain(props)
+        
+        return {
+            "message": f"Successfully undid last batch of {len(last_batch_ids)} properties.",
+            "undo_stack_size": undo_stack.size(),
+            "new_tree_size": kd_tree.size
+        }
+    except Exception as exc:
+        logger.error("Failed to undo batch: %s", exc)
+        raise HTTPException(status_code=500, detail=str(exc))

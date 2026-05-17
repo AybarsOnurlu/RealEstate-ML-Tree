@@ -149,7 +149,11 @@ async function performSearch(lat, lng, radiusKm) {
             return;
         }
 
-        searchResultsSummary.innerHTML = `Found <strong>${data.length}</strong> properties within ${radiusKm}km.`;
+        if (data.length === 100) {
+            searchResultsSummary.innerHTML = `Found <strong>>100</strong> properties within ${radiusKm}km.`;
+        } else {
+            searchResultsSummary.innerHTML = `Found <strong>${data.length}</strong> properties within ${radiusKm}km.`;
+        }
 
         // Add markers
         data.forEach(prop => {
