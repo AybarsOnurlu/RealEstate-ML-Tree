@@ -361,6 +361,16 @@ h3 {
     background: #fecaca;
 }
 
+.clear-btn {
+    color: #b45309;
+    background: #fef3c7;
+    border-color: #fde68a;
+}
+
+.clear-btn:hover {
+    background: #fde68a;
+}
+
 .scraper-log {
     font-size: 0.85rem;
     color: var(--text-muted);
@@ -381,4 +391,21 @@ h3 {
     0% { stroke-width: 2px; stroke-opacity: 1; }
     50% { stroke-width: 8px; stroke-opacity: 0.3; }
     100% { stroke-width: 2px; stroke-opacity: 1; }
+}
+
+/* Scraped Source Link */
+.scraped-link {
+    display: block;
+    text-align: center;
+    font-size: 0.8rem;
+    color: #4F46E5;
+    text-decoration: none;
+    font-weight: 600;
+    margin-top: 4px;
+    transition: var(--transition);
+}
+
+.scraped-link:hover {
+    color: #3730A3;
+    text-decoration: underline;
 }

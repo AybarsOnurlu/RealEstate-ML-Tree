@@ -29,6 +29,7 @@ const priceValueText = document.getElementById('price-value');
 const btnTriggerScrape = document.getElementById('btn-trigger-scrape');
 const btnProcessQueue = document.getElementById('btn-process-queue');
 const btnUndoScrape = document.getElementById('btn-undo-scrape');
+const btnClearScraped = document.getElementById('btn-clear-scraped');
 const scraperLog = document.getElementById('scraper-log');
 
 // Formatters
@@ -41,7 +42,9 @@ const currencyFormatter = new Intl.NumberFormat('en-US', {
 // Initialize App
 function init() {
     // Center map on King County (Seattle area)
-    map = L.map('map').setView([47.6062, -122.3321], 10);
+    // Center map on King County (Seattle area), move zoom to bottom right
+    map = L.map('map', {zoomControl: false}).setView([47.6062, -122.3321], 10);
+    L.control.zoom({position: 'bottomright'}).addTo(map);
 
     // Add CartoDB Positron TileLayer (clean and modern)
     L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
@@ -77,6 +80,7 @@ function setupEventListeners() {
     btnTriggerScrape.addEventListener('click', handleTriggerScrape);
     btnProcessQueue.addEventListener('click', handleProcessQueue);
     btnUndoScrape.addEventListener('click', handleUndoScrape);
+    btnClearScraped.addEventListener('click', handleClearScraped);
 }
 
 function switchMode(mode) {
@@ -306,10 +310,20 @@ async function handleProcessQueue() {
                     <p><strong>Bedrooms:</strong> ${prop.bedrooms}</p>
                     <p><strong>Bathrooms:</strong> ${prop.bathrooms}</p>
                     <p><strong>Sqft:</strong> ${prop.sqft_living}</p>
+                    <hr style="border:0; border-top:1px solid #e5e7eb; margin:8px 0;">
+                    <a href="https://www.zillow.com/homes/Seattle_rb/" target="_blank" class="scraped-link">🔗 View Source Listing</a>
                 `);
                 newMarkers.push(marker);
             });
             liveScrapedMarkerStacks.push(newMarkers);
+            
+            // Enforce visual limit of 1000 markers to prevent browser lag
+            let totalScraped = liveScrapedMarkerStacks.reduce((sum, batch) => sum + batch.length, 0);
+            while (totalScraped > 1000 && liveScrapedMarkerStacks.length > 0) {
+                let oldestBatch = liveScrapedMarkerStacks.shift();
+                oldestBatch.forEach(m => map.removeLayer(m));
+                totalScraped -= oldestBatch.length;
+            }
         }
 
         updateScraperLog(`${data.message}<br>Tree Size: ${data.new_tree_size}`);
@@ -343,6 +357,12 @@ async function handleUndoScrape() {
     } finally {
         toggleSpinner(false);
     }
+}
+
+function handleClearScraped() {
+    liveScrapedMarkerStacks.forEach(batch => batch.forEach(m => map.removeLayer(m)));
+    liveScrapedMarkerStacks = [];
+    updateScraperLog('Cleared all live scraped pins from the map.');
 }
 
 // Start app
