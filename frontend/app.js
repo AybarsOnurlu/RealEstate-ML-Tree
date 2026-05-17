@@ -24,6 +24,12 @@ const btnPredict = document.getElementById('btn-predict');
 const predictionResultBox = document.getElementById('prediction-result');
 const priceValueText = document.getElementById('price-value');
 
+// Scraper Admin Elements
+const btnTriggerScrape = document.getElementById('btn-trigger-scrape');
+const btnProcessQueue = document.getElementById('btn-process-queue');
+const btnUndoScrape = document.getElementById('btn-undo-scrape');
+const scraperLog = document.getElementById('scraper-log');
+
 // Formatters
 const currencyFormatter = new Intl.NumberFormat('en-US', {
     style: 'currency',
@@ -65,6 +71,11 @@ function setupEventListeners() {
 
     // Predict Form Submit
     predictForm.addEventListener('submit', handlePredictionSubmit);
+
+    // Scraper Controls
+    btnTriggerScrape.addEventListener('click', handleTriggerScrape);
+    btnProcessQueue.addEventListener('click', handleProcessQueue);
+    btnUndoScrape.addEventListener('click', handleUndoScrape);
 }
 
 function switchMode(mode) {
@@ -239,6 +250,65 @@ async function handlePredictionSubmit(e) {
 
 function toggleSpinner(show) {
     spinner.classList.toggle('hidden', !show);
+}
+
+// ---------------------------------------------------------------------------
+// Scraper Admin Logic
+// ---------------------------------------------------------------------------
+
+function updateScraperLog(message, isError = false) {
+    scraperLog.innerHTML = `<span style="color: ${isError ? '#dc2626' : 'inherit'}">${message}</span>`;
+}
+
+async function handleTriggerScrape() {
+    toggleSpinner(true);
+    updateScraperLog('Triggering scraper...');
+    try {
+        const response = await fetch(`${API_BASE_URL}/scrape/trigger`);
+        if (!response.ok) throw new Error('Failed to trigger scraper');
+        const data = await response.json();
+        updateScraperLog(`${data.message}<br>Queue Size: ${data.queue_size}`);
+    } catch (error) {
+        updateScraperLog(error.message, true);
+    } finally {
+        toggleSpinner(false);
+    }
+}
+
+async function handleProcessQueue() {
+    toggleSpinner(true);
+    updateScraperLog('Processing queue...');
+    try {
+        const response = await fetch(`${API_BASE_URL}/scrape/process`, { method: 'POST' });
+        if (!response.ok) {
+            const errData = await response.json().catch(() => ({}));
+            throw new Error(errData.detail || 'Failed to process queue');
+        }
+        const data = await response.json();
+        updateScraperLog(`${data.message}<br>Tree Size: ${data.new_tree_size}`);
+    } catch (error) {
+        updateScraperLog(error.message, true);
+    } finally {
+        toggleSpinner(false);
+    }
+}
+
+async function handleUndoScrape() {
+    toggleSpinner(true);
+    updateScraperLog('Undoing last scrape...');
+    try {
+        const response = await fetch(`${API_BASE_URL}/scrape/undo`, { method: 'POST' });
+        if (!response.ok) {
+            const errData = await response.json().catch(() => ({}));
+            throw new Error(errData.detail || 'Failed to undo scrape');
+        }
+        const data = await response.json();
+        updateScraperLog(`${data.message}<br>Tree Size: ${data.new_tree_size}`);
+    } catch (error) {
+        updateScraperLog(error.message, true);
+    } finally {
+        toggleSpinner(false);
+    }
 }
 
 // Start app

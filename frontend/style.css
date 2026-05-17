@@ -320,3 +320,53 @@ h3 {
     font-size: 0.9rem;
     color: var(--text-main);
 }
+
+/* Admin Section */
+.admin-section {
+    margin-top: 24px;
+    padding-top: 16px;
+    border-top: 1px solid rgba(0,0,0,0.1);
+}
+
+.admin-controls {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 12px;
+}
+
+.admin-btn {
+    padding: 10px;
+    background: #f3f4f6;
+    color: var(--text-main);
+    border: 1px solid rgba(0,0,0,0.1);
+    border-radius: 8px;
+    font-size: 0.9rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: var(--transition);
+}
+
+.admin-btn:hover {
+    background: #e5e7eb;
+}
+
+.undo-btn {
+    color: #dc2626;
+    background: #fee2e2;
+    border-color: #fca5a5;
+}
+
+.undo-btn:hover {
+    background: #fecaca;
+}
+
+.scraper-log {
+    font-size: 0.85rem;
+    color: var(--text-muted);
+    background: rgba(0,0,0,0.03);
+    padding: 10px;
+    border-radius: 8px;
+    font-family: monospace;
+    min-height: 40px;
+}
