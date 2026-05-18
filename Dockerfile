@@ -24,8 +24,9 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 # ── Non-root user (security best practice) ───────────────────────────────────
+# ── Non-root user (security best practice) ───────────────────────────────────
 RUN groupadd --gid 1001 appgroup \
-    && useradd  --uid 1001 --gid appgroup --no-create-home appuser
+    && useradd  --uid 1001 --gid appgroup --create-home appuser
 
 # ── Working directory ─────────────────────────────────────────────────────────
 WORKDIR /app
@@ -39,7 +40,9 @@ RUN pip install --upgrade pip --no-cache-dir \
     && pip install --no-cache-dir -r requirements.txt
 
 # ── Application source ────────────────────────────────────────────────────────
+# ── Application source ────────────────────────────────────────────────────────
 COPY app.py kdtree.py structures.py ./
+COPY frontend/ ./frontend/
 
 # Transfer ownership to the non-root user
 RUN chown -R appuser:appgroup /app
