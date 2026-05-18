@@ -668,13 +668,27 @@ def process_queue():
         return {"message": "Queue is empty. Call /scrape/trigger first."}
     
     batch = []
+    ui_enrichment = {}
+    
     while not scrape_queue.is_empty():
-        batch.append(scrape_queue.dequeue())
+        prop = scrape_queue.dequeue()
+        # Temporarily store UI-only fields
+        source_url = prop.pop("source_url", None)
+        source_title = prop.pop("source_title", None)
+        
+        ui_enrichment[len(batch)] = {"source_url": source_url, "source_title": source_title}
+        batch.append(prop)
         
     try:
         response = supabase.table("properties").insert(batch).execute()
         inserted_rows = response.data
         inserted_ids = [row["id"] for row in inserted_rows]
+        
+        # Re-inject UI fields for the frontend
+        for i, row in enumerate(inserted_rows):
+            if i in ui_enrichment:
+                row["source_url"] = ui_enrichment[i]["source_url"]
+                row["source_title"] = ui_enrichment[i]["source_title"]
         
         # Push to Undo Stack
         undo_stack.push(inserted_ids)
