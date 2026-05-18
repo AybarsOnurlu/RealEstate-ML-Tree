@@ -24,8 +24,11 @@ import os
 import time
 import logging
 import random
+import re
 import pandas as pd
 import kagglehub
+import httpx
+from bs4 import BeautifulSoup
 from contextlib import asynccontextmanager
 from typing import Any, Dict, List, Optional
 
@@ -541,49 +544,118 @@ def benchmark(
 
 @app.get(
     "/scrape/trigger",
-    summary="Mock a live scraper finding new properties",
+    summary="Scrape real listings from Craigslist Seattle",
     tags=["Live Scraper"],
 )
 def trigger_scrape():
-    """Generates 10-20 mock King County properties and adds them to the custom Queue."""
-    num_new = random.randint(10, 20)
+    """Scrapes live real estate listings from Craigslist Seattle and enqueues them."""
     
-    if scraper_df is not None and not scraper_df.empty:
-        # Fetch actual real estate data from the dataset
-        sample = scraper_df.sample(n=num_new)
-        for _, row in sample.iterrows():
-            prop = {
-                "price": float(row["price"]),
-                "bedrooms": float(row["bedrooms"]),
-                "bathrooms": float(row["bathrooms"]),
-                "sqft_living": float(row["sqft_living"]),
-                "sqft_lot": float(row["sqft_lot"]),
-                "floors": float(row["floors"]),
-                "yr_built": float(row["yr_built"]),
-                "lat": float(row["lat"]),
-                "long": float(row["long"]),
-            }
-            scrape_queue.enqueue(prop)
-    else:
-        # Fallback if dataset fails
-        for _ in range(num_new):
-            base_price = random.randint(20, 200) * 10000
-            price = base_price + random.choice([0, 500, 900, -100])
+    HEADERS = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+    CL_LIST_URL = "https://seattle.craigslist.org/d/real-estate-for-sale/search/rea"
+    
+    scraped = []
+    
+    try:
+        resp = httpx.get(CL_LIST_URL, headers=HEADERS, timeout=15, follow_redirects=True)
+        soup = BeautifulSoup(resp.text, "html.parser")
+        listings = soup.select("li.cl-static-search-result")
+        random.shuffle(listings)  # randomize so each trigger fetches different ones
+        
+        for li in listings:
+            if len(scraped) >= 15:
+                break
             
-            prop = {
-                "price": price,
-                "bedrooms": random.randint(1, 6),
-                "bathrooms": random.choice([1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 4.5]),
-                "sqft_living": random.randint(100, 500) * 10,
-                "sqft_lot": random.randint(200, 1000) * 10,
-                "floors": random.choice([1.0, 1.5, 2.0, 2.5, 3.0]),
-                "yr_built": random.randint(1950, 2023),
-                "lat": round(random.uniform(47.1, 47.8), 6),
-                "long": round(random.uniform(-122.5, -121.7), 6),
-            }
-            scrape_queue.enqueue(prop)
+            link_el = li.select_one("a")
+            price_el = li.select_one(".price")
+            loc_el = li.select_one(".location")
+            title = li.get("title", "")
+            
+            if not link_el or not price_el:
+                continue
+            
+            link = link_el["href"]
+            price_raw = re.sub(r"[^\d]", "", price_el.text)
+            if not price_raw:
+                continue
+            price = float(price_raw)
+            if price < 50000 or price > 10000000:  # filter outliers
+                continue
+            
+            # Fetch detail page for lat/lon and housing attrs
+            try:
+                dr = httpx.get(link, headers=HEADERS, timeout=10, follow_redirects=True)
+                dsoup = BeautifulSoup(dr.text, "html.parser")
+                
+                map_el = dsoup.select_one("#map")
+                if not map_el:
+                    continue
+                lat = float(map_el.get("data-latitude", 0))
+                lon = float(map_el.get("data-longitude", 0))
+                if not (-180 <= lon <= 180) or not (-90 <= lat <= 90) or lat == 0:
+                    continue
+                
+                # Parse beds, baths, sqft from housing text e.g. "/ 3br - 1800ft2 -"
+                housing_el = dsoup.select_one(".housing")
+                housing_text = housing_el.text if housing_el else ""
+                
+                beds_m = re.search(r"(\d+)br", housing_text)
+                sqft_m = re.search(r"([\d,]+)ft2", housing_text.replace(",", ""))
+                
+                # Baths from attrgroup
+                baths = 1.0
+                for attr in dsoup.select(".attrgroup .attr b"):
+                    b_m = re.search(r"(\d+(?:\.\d+)?)Ba", attr.text)
+                    if b_m:
+                        baths = float(b_m.group(1))
+                        break
+                
+                bedrooms = float(beds_m.group(1)) if beds_m else 3.0
+                sqft_living = float(sqft_m.group(1).replace(",", "")) if sqft_m else 1500.0
+                
+                prop = {
+                    "price": price,
+                    "bedrooms": bedrooms,
+                    "bathrooms": baths,
+                    "sqft_living": sqft_living,
+                    "sqft_lot": sqft_living * 2,  # Craigslist rarely lists lot size
+                    "floors": 1.0,
+                    "yr_built": 2000.0,
+                    "lat": lat,
+                    "long": lon,
+                    "source_url": link,
+                    "source_title": title,
+                }
+                scraped.append(prop)
+                scrape_queue.enqueue(prop)
+                logger.info("Scraped: %s @ $%.0f", title[:50], price)
+                
+            except Exception as detail_err:
+                logger.warning("Detail fetch failed for %s: %s", link, detail_err)
+                continue
     
-    return {"message": f"{num_new} properties scraped and queued.", "queue_size": scrape_queue.size()}
+    except Exception as e:
+        logger.error("Craigslist scrape failed: %s", e)
+        # Fallback to Kaggle dataset sample
+        if scraper_df is not None and not scraper_df.empty:
+            sample = scraper_df.sample(n=10)
+            for _, row in sample.iterrows():
+                prop = {
+                    "price": float(row["price"]),
+                    "bedrooms": float(row["bedrooms"]),
+                    "bathrooms": float(row["bathrooms"]),
+                    "sqft_living": float(row["sqft_living"]),
+                    "sqft_lot": float(row["sqft_lot"]),
+                    "floors": float(row["floors"]),
+                    "yr_built": float(row["yr_built"]),
+                    "lat": float(row["lat"]),
+                    "long": float(row["long"]),
+                    "source_url": None,
+                    "source_title": None,
+                }
+                scrape_queue.enqueue(prop)
+            return {"message": "Craigslist unavailable. Loaded 10 from dataset fallback.", "queue_size": scrape_queue.size()}
+    
+    return {"message": f"{len(scraped)} live listings scraped from Craigslist and queued.", "queue_size": scrape_queue.size()}
 
 @app.post(
     "/scrape/process",

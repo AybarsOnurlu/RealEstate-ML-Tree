@@ -338,14 +338,19 @@ async function handleProcessQueue() {
                     className: 'live-marker'
                 }).addTo(map);
 
+                const sourceLink = prop.source_url
+                    ? `<a href="${prop.source_url}" target="_blank" rel="noopener" class="scraped-link">🔗 View on Craigslist</a>`
+                    : `<span class="scraped-link" style="opacity:0.5; cursor:default;">📁 Historical Dataset</span>`;
+
                 marker.bindPopup(`
                     <h4 style="color:#10b981;">🚨 LIVE SCRAPED LISTING!</h4>
-                    <p><strong>Value:</strong> ${currencyFormatter.format(prop.price)}</p>
+                    ${prop.source_title ? `<p style="font-size:0.8rem;color:#6B7280;margin-bottom:6px;">${prop.source_title.substring(0,60)}...</p>` : ''}
+                    <p><strong>Price:</strong> ${currencyFormatter.format(prop.price)}</p>
                     <p><strong>Bedrooms:</strong> ${prop.bedrooms}</p>
                     <p><strong>Bathrooms:</strong> ${prop.bathrooms}</p>
                     <p><strong>Sqft:</strong> ${prop.sqft_living}</p>
                     <hr style="border:0; border-top:1px solid #e5e7eb; margin:8px 0;">
-                    <a href="https://www.zillow.com/homes/Seattle_rb/" target="_blank" class="scraped-link">🔗 View Source Listing</a>
+                    ${sourceLink}
                 `);
                 newMarkers.push(marker);
             });
