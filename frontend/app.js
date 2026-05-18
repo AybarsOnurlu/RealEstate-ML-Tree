@@ -1,5 +1,5 @@
 // Configuration
-const API_BASE_URL = 'http://localhost:8080';
+const API_BASE_URL = ''; // Empty string so fetch hits the same origin (FastAPI backend)
 let currentMode = 'search'; // 'search' or 'predict'
 let map;
 let markers = [];

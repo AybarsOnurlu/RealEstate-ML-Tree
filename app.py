@@ -32,6 +32,7 @@ from typing import Any, Dict, List, Optional
 import numpy as np
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.model_selection import train_test_split
@@ -648,3 +649,8 @@ def undo_scrape():
     except Exception as exc:
         logger.error("Failed to undo batch: %s", exc)
         raise HTTPException(status_code=500, detail=str(exc))
+
+# ---------------------------------------------------------------------------
+# Serve Frontend
+# ---------------------------------------------------------------------------
+app.mount("/", StaticFiles(directory="frontend", html=True), name="frontend")
