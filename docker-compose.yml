@@ -2,10 +2,10 @@
 # ─────────────────────────────────────────────────────────────────────────────
 # LOCAL DEVELOPMENT (Windows/Linux x86-64)
 #   docker compose up -d --build
-#   curl http://localhost:8000/health
+#   curl http://localhost:8080/health
 #
-# PRODUCTION (Hetzner CAX ARM64):
-#   Use docker-compose.prod.yml which adds:  platforms: [linux/arm64]
+# PRODUCTION (AWS EC2 t3.large AMD64):
+#   Ensures strict CPU/RAM limits to co-host with other applications.
 # ─────────────────────────────────────────────────────────────────────────────
 services:
   api:
@@ -16,14 +16,19 @@ services:
       # The Hetzner ARM64 server runs the same image built natively on arm64.
     image: realestate-api:latest
     container_name: realestate_api
+    platform: linux/amd64
     ports:
-      - "8000:8000"
+      - "8080:8080"
     env_file:
       - .env
     restart: unless-stopped
-    mem_limit: 512m
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 1g
     healthcheck:
-      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health')\""]
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8080/health')\""]
       interval: 30s
       timeout: 10s
       retries: 5

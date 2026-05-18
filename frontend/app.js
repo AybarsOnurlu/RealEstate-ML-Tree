@@ -1,5 +1,5 @@
 // Configuration
-const API_BASE_URL = 'http://localhost:8000';
+const API_BASE_URL = 'http://localhost:8080';
 let currentMode = 'search'; // 'search' or 'predict'
 let map;
 let markers = [];

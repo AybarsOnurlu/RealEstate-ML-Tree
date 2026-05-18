@@ -1,6 +1,6 @@
 # ─────────────────────────────────────────────────────────────────────────────
 # Production Dockerfile — Real Estate API
-# Target platform: linux/arm64 (Oracle Cloud Ampere A1 instance)
+# Target platform: linux/amd64 (AWS EC2 t3.large)
 # ─────────────────────────────────────────────────────────────────────────────
 
 # Use the official slim Python image.
@@ -47,12 +47,12 @@ RUN chown -R appuser:appgroup /app
 # ── Runtime ───────────────────────────────────────────────────────────────────
 USER appuser
 
-EXPOSE 8000
+EXPOSE 8080
 
 # Health-check: Docker / Oracle Container Engine will mark the container
 # unhealthy if /health returns non-2xx for 3 consecutive 30s intervals.
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
-    CMD curl -f http://localhost:8000/health || exit 1
+    CMD curl -f http://localhost:8080/health || exit 1
 
 # Uvicorn flags:
 #   --host 0.0.0.0      → listen on all interfaces (required inside Docker)
@@ -61,6 +61,6 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
 #   --access-log        → log every request to stdout (visible via docker logs)
 CMD ["uvicorn", "app:app", \
      "--host", "0.0.0.0", \
-     "--port", "8000", \
+     "--port", "8080", \
      "--workers", "1", \
      "--access-log"]
