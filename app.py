@@ -569,6 +569,9 @@ def trigger_scrape():
             price_el = li.select_one(".price")
             loc_el = li.select_one(".location")
             title = li.get("title", "")
+            title_lower = title.lower()
+            if any(word in title_lower for word in ["lot", "land", "acre", "acres", "parcel"]):
+                continue
             
             if not link_el or not price_el:
                 continue
@@ -601,6 +604,10 @@ def trigger_scrape():
                 beds_m = re.search(r"(\d+)br", housing_text)
                 sqft_m = re.search(r"([\d,]+)ft2", housing_text.replace(",", ""))
                 
+                # If it doesn't explicitly state bedrooms or sqft, it's likely not a house
+                if not beds_m or not sqft_m:
+                    continue
+                
                 # Baths from attrgroup
                 baths = 1.0
                 for attr in dsoup.select(".attrgroup .attr b"):
@@ -609,8 +616,8 @@ def trigger_scrape():
                         baths = float(b_m.group(1))
                         break
                 
-                bedrooms = float(beds_m.group(1)) if beds_m else 3.0
-                sqft_living = float(sqft_m.group(1).replace(",", "")) if sqft_m else 1500.0
+                bedrooms = float(beds_m.group(1))
+                sqft_living = float(sqft_m.group(1).replace(",", ""))
                 
                 prop = {
                     "price": price,
