@@ -1,5 +1,5 @@
-// Configuration
-const API_BASE_URL = ''; // Empty string so fetch hits the same origin (FastAPI backend)
+// Configuration — always talk to whichever host is serving this page
+const API_BASE_URL = window.location.origin;
 let currentMode = 'search'; // 'search' or 'predict'
 let map;
 let markers = [];
