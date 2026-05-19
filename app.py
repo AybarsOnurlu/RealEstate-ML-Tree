@@ -509,7 +509,7 @@ def predict(request: PredictRequest):
                 "bathrooms": p.bathrooms,
                 "sqft_living": p.sqft_living
             }
-            สำหรับ _, p in top_pairs
+            for _, p in top_pairs
         ]
     else:
         predicted = rf_pred
