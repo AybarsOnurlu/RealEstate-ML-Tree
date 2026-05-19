@@ -445,59 +445,61 @@ def predict(request: PredictRequest):
     )
     rf_pred = float(rf_model.predict(features)[0])
 
-    # 1. Spatial Filter: Fetch 30 nearest geographic neighbors
+    # A. Spatial Filtering
+    # Fetch 30 nearest geographic neighbors (O(log N) due to KD-Tree)
     neighbors = kd_tree.k_nearest_neighbors(request.lat, request.long, 30)
     
     weights = []
     prices = []
     
-    # Pre-fetch dynamic scales built in /sync
-    std_beds = feature_scales.get("bedrooms", 1.0)
-    std_baths = feature_scales.get("bathrooms", 1.0)
-    std_sqft = feature_scales.get("sqft_living", 1.0)
-    std_yr = feature_scales.get("yr_built", 1.0)
+    # Extract globally cached O(1) Feature Scales for exact unit parity
+    sigma_beds = feature_scales.get("bedrooms", 1.0)
+    sigma_baths = feature_scales.get("bathrooms", 1.0)
+    sigma_sqft = feature_scales.get("sqft_living", 1.0)
+    sigma_year = feature_scales.get("yr_built", 1.0)
 
-    # Gamma decay parameters
+    # Gamma decay parameters mapping user plan
     gamma_spatial = 2.0  # km
-    gamma_feature = 1.0  # std devs
+    gamma_feature = 1.0  # normalized std devs
     
-    for dist_km, prop in neighbors:
-        # A. Spatial Distance Penalty (Gaussian RBF)
-        w_spatial = math.exp(-(dist_km ** 2) / (2 * (gamma_spatial ** 2)))
+    for d_spatial, prop in neighbors:
+        # B. Spatial Weighting (W_spatial) - Applying Gaussian penalty to physical distance
+        W_spatial = math.exp(-(d_spatial ** 2) / (2 * (gamma_spatial ** 2)))
         
-        # B. Feature Similarity Penalty (Scaled)
-        d_beds  = abs(request.bedrooms - prop.bedrooms) / std_beds
-        d_baths = abs(request.bathrooms - prop.bathrooms) / std_baths
-        d_sqft  = abs(request.sqft_living - prop.sqft_living) / std_sqft
-        d_yr    = abs(request.yr_built - prop.yr_built) / std_yr
+        # C. Normalized Feature Similarity (W_feature)
+        delta_beds  = abs(request.bedrooms - prop.bedrooms) / sigma_beds
+        delta_baths = abs(request.bathrooms - prop.bathrooms) / sigma_baths
+        delta_sqft  = abs(request.sqft_living - prop.sqft_living) / sigma_sqft
+        delta_year  = abs(request.yr_built - prop.yr_built) / sigma_year
         
-        feat_dist = d_beds + d_baths + d_sqft + d_yr
-        w_feature = math.exp(-(feat_dist ** 2) / (2 * (gamma_feature ** 2)))
+        FeatDist = delta_beds + delta_baths + delta_sqft + delta_year
+        W_feature = math.exp(-(FeatDist ** 2) / (2 * (gamma_feature ** 2)))
         
-        # C. Combined weight
-        w_total = w_spatial * w_feature
-        weights.append(w_total)
+        # D. Combined Weight (W_total)
+        W_total = W_spatial * W_feature
+        weights.append(W_total)
         prices.append(prop.price)
         
-    sum_w = sum(weights)
+    sum_W_total = sum(weights)
     local_pred = 0.0
     alpha = 0.0
     
     comparables = []
 
-    if sum_w > 0:
-        local_pred = sum(w * p for w, p in zip(weights, prices)) / sum_w
-        # D. Dynamic Alpha Weighting
-        # If sum_w is high (many close and similar neighbors), alpha goes up to 0.7 max
-        alpha = min(0.7, sum_w / 10.0) 
+    if sum_W_total > 0:
+        local_pred = sum(w * p for w, p in zip(weights, prices)) / sum_W_total
+        
+        # Dynamic Blend Weighting (Alpha)
+        # We increase blend weight of local KNN prediction (capped at 0.7) if aggregate weight is high
+        alpha = min(0.7, sum_W_total / 10.0) 
+        
+        # Final Blend against Global Baseline Random Forest Prediction
         predicted = (alpha * local_pred) + ((1.0 - alpha) * rf_pred)
         
-        # E. Extract Top Comparables
-        # Pair weights with properties
+        # Limit to Top 3-5 Comparables for Explainable AI (XAI) array response
+        # Pair weights with properties, sort by highest similarity score
         neighbor_pairs = list(zip(weights, [n[1] for n in neighbors]))
-        # Sort by weight descending
         neighbor_pairs.sort(key=lambda x: x[0], reverse=True)
-        # Take top 3-5 (limit to those with meaningful weight)
         top_pairs = [pair for pair in neighbor_pairs if pair[0] > 0.05][:5]
         
         comparables = [
