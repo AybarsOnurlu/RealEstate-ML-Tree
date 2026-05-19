@@ -25,6 +25,7 @@ import time
 import logging
 import random
 import re
+import math
 import pandas as pd
 import kagglehub
 import httpx
@@ -69,6 +70,7 @@ SUPABASE_KEY: str = os.getenv("SUPABASE_KEY", "")
 kd_tree: KDTree = KDTree()
 rf_model: Optional[RandomForestRegressor] = None
 model_metrics: Dict[str, Any] = {}          # populated after training
+feature_scales: Dict[str, float] = {}       # populated after training for IDW
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 # Scraper Data Structures
@@ -164,9 +166,10 @@ def rebuild_tree_and_retrain(properties: List[Property]) -> None:
     """
     1. Build a balanced KD-Tree from the property list.
     2. Train a RandomForestRegressor and compute evaluation metrics.
+    3. Compute feature standard deviations for hybrid predictions.
     Both operations mutate module-level globals.
     """
-    global kd_tree, rf_model, model_metrics
+    global kd_tree, rf_model, model_metrics, feature_scales
 
     # ── KD-Tree ──────────────────────────────────────────────────────────────
     kd_tree = KDTree()
@@ -222,6 +225,11 @@ def rebuild_tree_and_retrain(properties: List[Property]) -> None:
             for name, imp in zip(FEATURE_NAMES, rf_model.feature_importances_)
         },
     }
+
+    # ── Feature Standard Deviations ──────────────────────────────────────────
+    for f in ["bedrooms", "bathrooms", "sqft_living", "yr_built"]:
+        std_val = float(np.std([getattr(p, f) for p in properties]))
+        feature_scales[f] = std_val if std_val > 0.0 else 1.0
 
     logger.info(
         "RandomForest trained — R²=%.4f  RMSE=%.0f  MAE=%.0f  OOB=%.4f",
@@ -300,6 +308,9 @@ class PredictRequest(BaseModel):
 class PredictResponse(BaseModel):
     predicted_price_usd: float
     input_features: PredictRequest
+    hybrid_blend_alpha: float = Field(0.0, description="Weight (0 to 1) applied to local KNN prediction")
+    local_knn_prediction: float = Field(0.0, description="Price predicted purely from local neighbors")
+    rf_global_prediction: float = Field(0.0, description="Price predicted purely from global Random Forest")
 
 
 class SyncResponse(BaseModel):
@@ -441,35 +452,53 @@ def predict(request: PredictRequest):
     weights = []
     prices = []
     
+    # Pre-fetch dynamic scales built in /sync
+    std_beds = feature_scales.get("bedrooms", 1.0)
+    std_baths = feature_scales.get("bathrooms", 1.0)
+    std_sqft = feature_scales.get("sqft_living", 1.0)
+    std_yr = feature_scales.get("yr_built", 1.0)
+
+    # Gamma decay parameters
+    gamma_spatial = 2.0  # km
+    gamma_feature = 1.0  # std devs
+    
     for dist_km, prop in neighbors:
-        # Spatial attenuation (IDW)
-        w_spatial = 1.0 / (dist_km + 0.5)
+        # A. Spatial Distance Penalty (Gaussian RBF)
+        w_spatial = math.exp(-(dist_km ** 2) / (2 * (gamma_spatial ** 2)))
         
-        # 2. Feature Similarity Penalty
-        # Normalize differences roughly based on typical standard deviations
-        d_beds = abs(request.bedrooms - prop.bedrooms) / 1.0
-        d_baths = abs(request.bathrooms - prop.bathrooms) / 1.0
-        d_sqft = abs(request.sqft_living - prop.sqft_living) / 500.0
-        d_yr = abs(request.yr_built - prop.yr_built) / 20.0
+        # B. Feature Similarity Penalty (Scaled)
+        d_beds  = abs(request.bedrooms - prop.bedrooms) / std_beds
+        d_baths = abs(request.bathrooms - prop.bathrooms) / std_baths
+        d_sqft  = abs(request.sqft_living - prop.sqft_living) / std_sqft
+        d_yr    = abs(request.yr_built - prop.yr_built) / std_yr
         
         feat_dist = d_beds + d_baths + d_sqft + d_yr
-        w_feature = 1.0 / (feat_dist + 0.5)
+        w_feature = math.exp(-(feat_dist ** 2) / (2 * (gamma_feature ** 2)))
         
-        # Combined weight
+        # C. Combined weight
         w_total = w_spatial * w_feature
         weights.append(w_total)
         prices.append(prop.price)
         
-    if sum(weights) > 0:
-        local_pred = sum(w * p for w, p in zip(weights, prices)) / sum(weights)
-        # 3. Hybrid Prediction: Blend 60% Local weighted k-NN + 40% Random Forest
-        predicted = (0.6 * local_pred) + (0.4 * rf_pred)
+    sum_w = sum(weights)
+    local_pred = 0.0
+    alpha = 0.0
+
+    if sum_w > 0:
+        local_pred = sum(w * p for w, p in zip(weights, prices)) / sum_w
+        # D. Dynamic Alpha Weighting
+        # If sum_w is high (many close and similar neighbors), alpha goes up to 0.7 max
+        alpha = min(0.7, sum_w / 10.0) 
+        predicted = (alpha * local_pred) + ((1.0 - alpha) * rf_pred)
     else:
         predicted = rf_pred
 
     return PredictResponse(
         predicted_price_usd=round(predicted, 2),
         input_features=request,
+        hybrid_blend_alpha=round(alpha, 4),
+        local_knn_prediction=round(local_pred, 2),
+        rf_global_prediction=round(rf_pred, 2),
     )
 
 
