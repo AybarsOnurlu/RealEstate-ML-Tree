@@ -5,6 +5,8 @@ let map;
 let markers = [];
 let searchCircle = null;
 let currentClickMarker = null;
+let compLines = [];
+let compMarkers = [];
 let liveScrapedMarkerStacks = []; // Array of Arrays to match backend LIFO Stack
 
 // DOM Elements
@@ -265,16 +267,107 @@ async function handlePredictionSubmit(e) {
         
         const data = await response.json();
         
+        
+        // Clear previous lines and markers
+        compLines.forEach(line => map.removeLayer(line));
+        compMarkers.forEach(m => map.removeLayer(m));
+        compLines = [];
+        compMarkers = [];
+
         // Show result
         priceValueText.textContent = currencyFormatter.format(data.predicted_price_usd);
+        
+        // Update AI Confidence & Blend
+        const blendBadge = document.getElementById('ai-blend-badge');
+        const blendBarFill = document.getElementById('blend-bar-fill');
+        const blendText = document.getElementById('blend-text');
+        
+        if (data.rbf_weight !== undefined) {
+            blendBadge.classList.remove('hidden');
+            const percent = Math.round(data.rbf_weight * 100);
+            blendBarFill.style.width = `${percent}%`;
+            
+            if (percent > 70) {
+                blendBarFill.style.backgroundColor = '#10b981'; // green
+                blendText.textContent = `High Confidence (${percent}% Comps Match)`;
+            } else if (percent > 40) {
+                blendBarFill.style.backgroundColor = '#f59e0b'; // yellow
+                blendText.textContent = `Medium Confidence (${percent}% Comps Match)`;
+            } else {
+                blendBarFill.style.backgroundColor = '#ef4444'; // red
+                blendText.textContent = `Low Confidence (${percent}% Comps Match)`;
+            }
+        } else {
+            blendBadge.classList.add('hidden');
+        }
+
+        // Display comps in UI and Map
+        const compsSection = document.getElementById('comps-section');
+        const compsList = document.getElementById('comps-list');
+        compsList.innerHTML = '';
+        
+        if (data.comparable_properties && data.comparable_properties.length > 0) {
+            compsSection.classList.remove('hidden');
+            
+            data.comparable_properties.forEach((comp, idx) => {
+                // UI List element
+                const li = document.createElement('li');
+                li.innerHTML = `
+                    <div class="comp-price">${currencyFormatter.format(comp.price)}</div>
+                    <div class="comp-details">${comp.bedrooms} bd, ${comp.bathrooms} ba, ${Math.round(comp.sqft_living)} sqft</div>
+                `;
+                compsList.appendChild(li);
+
+                // Map elements (Polylines and Markers)
+                const compLatLng = [comp.lat, comp.long];
+                const line = L.polyline([
+                    [payload.lat, payload.long],
+                    compLatLng
+                ], {
+                    color: '#6366f1',
+                    weight: 2,
+                    opacity: 0.6,
+                    dashArray: '5, 5'
+                }).addTo(map);
+                compLines.push(line);
+
+                const marker = L.circleMarker(compLatLng, {
+                    radius: 6,
+                    fillColor: '#6366f1',
+                    color: '#4f46e5',
+                    weight: 2,
+                    opacity: 1,
+                    fillOpacity: 0.8
+                }).addTo(map);
+                
+                marker.bindPopup(`
+                    <h5 style="margin:0 0 5px 0;">Comp #${idx + 1}</h5>
+                    <b>${currencyFormatter.format(comp.price)}</b><br>
+                    ${comp.bedrooms} beds | ${comp.bathrooms} baths<br>
+                    ${comp.sqft_living} sqft
+                `);
+                compMarkers.push(marker);
+            });
+            
+            // Optionally fit map to show target + comps
+            const group = new L.featureGroup([...compMarkers, currentClickMarker]);
+            map.fitBounds(group.getBounds().pad(0.1));
+            
+        } else {
+            compsSection.classList.add('hidden');
+        }
+
         predictionResultBox.classList.remove('hidden');
 
-        // Add a popup to the map marker
+        // Add a popup to the target map marker
         if (currentClickMarker) {
             currentClickMarker.bindPopup(`
                 <h4>Prediction</h4>
                 <p style="font-size:1.2rem; font-weight:bold; color:#10b981;">
                     ${currencyFormatter.format(data.predicted_price_usd)}
+                </p>
+                <p style="font-size:0.8rem; margin:0;">
+                    Target Property
                 </p>
             `).openPopup();
         }

@@ -458,3 +458,66 @@ body.dark-mode .leaflet-bar a:hover {
     background-color: var(--btn-admin-hover);
     color: var(--text-main);
 }
+
+/* XAI Overhaul Styles */
+.mt-2 { margin-top: 0.5rem; }
+.mt-4 { margin-top: 1rem; }
+.mb-2 { margin-bottom: 0.5rem; }
+.pb-1 { padding-bottom: 0.25rem; }
+.text-xs { font-size: 0.75rem; }
+.text-sm { font-size: 0.875rem; }
+.text-center { text-align: center; }
+.font-medium { font-weight: 500; }
+.font-bold { font-weight: 700; }
+.border-b { border-bottom: 1px solid var(--border-input, #e5e7eb); }
+
+.ai-badge {
+    background-color: var(--bg-surface);
+    border: 1px solid var(--border-input);
+    border-radius: 6px;
+    padding: 8px;
+}
+
+.blend-bar-bg {
+    width: 100%;
+    height: 6px;
+    background-color: var(--border-input);
+    border-radius: 3px;
+    overflow: hidden;
+}
+
+.blend-bar-fill {
+    height: 100%;
+    background-color: var(--primary-main);
+    transition: width 0.5s ease-out;
+}
+
+.comps-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    max-height: 150px;
+    overflow-y: auto;
+}
+
+.comps-list li {
+    padding: 6px 0;
+    border-bottom: 1px solid var(--border-input);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.comps-list li:last-child {
+    border-bottom: none;
+}
+
+.comp-price {
+    font-weight: 600;
+    color: var(--primary-main);
+}
+
+.comp-details {
+    color: var(--text-main);
+    opacity: 0.8;
+}

@@ -308,9 +308,8 @@ class PredictRequest(BaseModel):
 class PredictResponse(BaseModel):
     predicted_price_usd: float
     input_features: PredictRequest
-    hybrid_blend_alpha: float = Field(0.0, description="Weight (0 to 1) applied to local KNN prediction")
-    local_knn_prediction: float = Field(0.0, description="Price predicted purely from local neighbors")
-    rf_global_prediction: float = Field(0.0, description="Price predicted purely from global Random Forest")
+    rbf_weight: float = Field(0.0, description="Sum of RBF weights used to blend the local prediction")
+    comparable_properties: list[dict] = Field([], description="List of top comparable coordinates and data")
 
 
 class SyncResponse(BaseModel):
@@ -483,6 +482,8 @@ def predict(request: PredictRequest):
     sum_w = sum(weights)
     local_pred = 0.0
     alpha = 0.0
+    
+    comparables = []
 
     if sum_w > 0:
         local_pred = sum(w * p for w, p in zip(weights, prices)) / sum_w
@@ -490,15 +491,34 @@ def predict(request: PredictRequest):
         # If sum_w is high (many close and similar neighbors), alpha goes up to 0.7 max
         alpha = min(0.7, sum_w / 10.0) 
         predicted = (alpha * local_pred) + ((1.0 - alpha) * rf_pred)
+        
+        # E. Extract Top Comparables
+        # Pair weights with properties
+        neighbor_pairs = list(zip(weights, [n[1] for n in neighbors]))
+        # Sort by weight descending
+        neighbor_pairs.sort(key=lambda x: x[0], reverse=True)
+        # Take top 3-5 (limit to those with meaningful weight)
+        top_pairs = [pair for pair in neighbor_pairs if pair[0] > 0.05][:5]
+        
+        comparables = [
+            {
+                "lat": p.lat,
+                "long": p.long,
+                "price": p.price,
+                "bedrooms": p.bedrooms,
+                "bathrooms": p.bathrooms,
+                "sqft_living": p.sqft_living
+            }
+            สำหรับ _, p in top_pairs
+        ]
     else:
         predicted = rf_pred
 
     return PredictResponse(
         predicted_price_usd=round(predicted, 2),
         input_features=request,
-        hybrid_blend_alpha=round(alpha, 4),
-        local_knn_prediction=round(local_pred, 2),
-        rf_global_prediction=round(rf_pred, 2),
+        rbf_weight=round(alpha, 4),
+        comparable_properties=comparables
     )
 
 

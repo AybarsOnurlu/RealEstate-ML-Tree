@@ -93,8 +93,20 @@
             </form>
             
             <div id="prediction-result" class="prediction-result hidden">
-                <h4>Estimated Value</h4>
+                <h4>Est. Final Price</h4>
                 <div class="price-tag" id="price-value">$0</div>
+                
+                <div id="ai-blend-badge" class="ai-badge mt-2">
+                    <div class="blend-bar-bg">
+                        <div id="blend-bar-fill" class="blend-bar-fill"></div>
+                    </div>
+                    <p id="blend-text" class="text-xs mt-1 text-center font-medium"></p>
+                </div>
+
+                <div id="comps-section" class="comps-section mt-4 hidden">
+                    <h5 class="text-sm font-bold border-b pb-1 mb-2">Comparable Properties (AI Comps)</h5>
+                    <ul id="comps-list" class="comps-list text-xs"></ul>
+                </div>
             </div>
         </div>
         
