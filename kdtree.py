@@ -249,10 +249,10 @@ class KDTree:
             # Splitting-plane distance (same calculation as radius search)
             axis = node.axis
             if axis == 0:
-                diff    = lat - node.property.latitude
+                diff    = lat - node.property.lat
                 diff_km = abs(diff) * 111.32
             else:
-                diff    = lon - node.property.longitude
+                diff    = lon - node.property.long
                 diff_km = abs(diff) * 111.32 * math.cos(math.radians(lat))
 
             near, far = (node.left, node.right) if diff <= 0 else (node.right, node.left)

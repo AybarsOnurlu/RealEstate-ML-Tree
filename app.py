@@ -195,7 +195,9 @@ def rebuild_tree_and_retrain(properties: List[Property]) -> None:
 
     rf_model = RandomForestRegressor(
         n_estimators=150,
-        min_samples_leaf=2,
+        max_depth=20,
+        min_samples_split=10,
+        min_samples_leaf=4,
         oob_score=True,
         random_state=42,
         n_jobs=-1,
@@ -431,7 +433,39 @@ def predict(request: PredictRequest):
         [[getattr(request, f) for f in FEATURE_NAMES]],
         dtype=np.float64,
     )
-    predicted = float(rf_model.predict(features)[0])
+    rf_pred = float(rf_model.predict(features)[0])
+
+    # 1. Spatial Filter: Fetch 30 nearest geographic neighbors
+    neighbors = kd_tree.k_nearest_neighbors(request.lat, request.long, 30)
+    
+    weights = []
+    prices = []
+    
+    for dist_km, prop in neighbors:
+        # Spatial attenuation (IDW)
+        w_spatial = 1.0 / (dist_km + 0.5)
+        
+        # 2. Feature Similarity Penalty
+        # Normalize differences roughly based on typical standard deviations
+        d_beds = abs(request.bedrooms - prop.bedrooms) / 1.0
+        d_baths = abs(request.bathrooms - prop.bathrooms) / 1.0
+        d_sqft = abs(request.sqft_living - prop.sqft_living) / 500.0
+        d_yr = abs(request.yr_built - prop.yr_built) / 20.0
+        
+        feat_dist = d_beds + d_baths + d_sqft + d_yr
+        w_feature = 1.0 / (feat_dist + 0.5)
+        
+        # Combined weight
+        w_total = w_spatial * w_feature
+        weights.append(w_total)
+        prices.append(prop.price)
+        
+    if sum(weights) > 0:
+        local_pred = sum(w * p for w, p in zip(weights, prices)) / sum(weights)
+        # 3. Hybrid Prediction: Blend 60% Local weighted k-NN + 40% Random Forest
+        predicted = (0.6 * local_pred) + (0.4 * rf_pred)
+    else:
+        predicted = rf_pred
 
     return PredictResponse(
         predicted_price_usd=round(predicted, 2),
@@ -608,13 +642,9 @@ def trigger_scrape():
                 if not beds_m or not sqft_m:
                     continue
                 
-                # Baths from attrgroup
-                baths = 1.0
-                for attr in dsoup.select(".attrgroup .attr b"):
-                    b_m = re.search(r"(\d+(?:\.\d+)?)Ba", attr.text)
-                    if b_m:
-                        baths = float(b_m.group(1))
-                        break
+                # Baths from full page text as Craigslist DOM structure varies
+                baths_m = re.search(r"(\d+(?:\.\d+)?)\s*(?:ba|bath|baths|bathrooms)\b", dsoup.text, re.IGNORECASE)
+                baths = float(baths_m.group(1)) if baths_m else 1.0
                 
                 bedrooms = float(beds_m.group(1))
                 sqft_living = float(sqft_m.group(1).replace(",", ""))
