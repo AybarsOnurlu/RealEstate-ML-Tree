@@ -1,4 +1,4 @@
-.env
+# .env (Ekip ile paylaşım için bilerek yoruma alındı)
 __pycache__/
 *.pyc
 *.pyo
