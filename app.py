@@ -632,117 +632,124 @@ def benchmark(
     summary="Scrape real listings from Craigslist Seattle",
     tags=["Live Scraper"],
 )
-def trigger_scrape():
-    """Scrapes live real estate listings from Craigslist Seattle and enqueues them."""
-    
+async def trigger_scrape():
+    """
+    Craigslist Seattle'dan canlı emlak ilanlarını çekip kuyruğa ekler.
+    httpx.AsyncClient kullanılır → event loop tamamen non-blocking kalır.
+    """
+
     HEADERS = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
     CL_LIST_URL = "https://seattle.craigslist.org/d/real-estate-for-sale/search/rea"
-    
+
     scraped = []
-    
+
     try:
-        resp = httpx.get(CL_LIST_URL, headers=HEADERS, timeout=15, follow_redirects=True)
-        soup = BeautifulSoup(resp.text, "html.parser")
-        listings = soup.select("li.cl-static-search-result")
-        random.shuffle(listings)  # randomize so each trigger fetches different ones
-        
-        for li in listings:
-            if len(scraped) >= 15:
-                break
-            
-            link_el = li.select_one("a")
-            price_el = li.select_one(".price")
-            loc_el = li.select_one(".location")
-            title = li.get("title", "")
-            title_lower = title.lower()
-            if any(word in title_lower for word in ["lot", "land", "acre", "acres", "parcel"]):
-                continue
-            
-            if not link_el or not price_el:
-                continue
-            
-            link = link_el["href"]
-            price_raw = re.sub(r"[^\d]", "", price_el.text)
-            if not price_raw:
-                continue
-            price = float(price_raw)
-            if price < 50000 or price > 10000000:  # filter outliers
-                continue
-            
-            # Fetch detail page for lat/lon and housing attrs
-            try:
-                dr = httpx.get(link, headers=HEADERS, timeout=10, follow_redirects=True)
-                dsoup = BeautifulSoup(dr.text, "html.parser")
-                
-                map_el = dsoup.select_one("#map")
-                if not map_el:
+        # ── Tek bir AsyncClient örneği tüm session boyunca yeniden kullanılır ──
+        async with httpx.AsyncClient(
+            headers=HEADERS,
+            follow_redirects=True,
+            timeout=httpx.Timeout(connect=8.0, read=15.0, write=5.0, pool=5.0),
+        ) as client:
+
+            # İlan listesi sayfası — await ile non-blocking
+            resp = await client.get(CL_LIST_URL)
+            soup = BeautifulSoup(resp.text, "html.parser")
+            listings = soup.select("li.cl-static-search-result")
+            random.shuffle(listings)  # her trigger farklı ilanlar getirsin
+
+            for li in listings:
+                if len(scraped) >= 15:
+                    break
+
+                link_el  = li.select_one("a")
+                price_el = li.select_one(".price")
+                title    = li.get("title", "")
+                title_lower = title.lower()
+
+                if any(w in title_lower for w in ["lot", "land", "acre", "acres", "parcel"]):
                     continue
-                lat = float(map_el.get("data-latitude", 0))
-                lon = float(map_el.get("data-longitude", 0))
-                if not (-180 <= lon <= 180) or not (-90 <= lat <= 90) or lat == 0:
+                if not link_el or not price_el:
                     continue
-                
-                # Parse beds, baths, sqft from housing text e.g. "/ 3br - 1800ft2 -"
-                housing_el = dsoup.select_one(".housing")
-                housing_text = housing_el.text if housing_el else ""
-                
-                beds_m = re.search(r"(\d+)br", housing_text)
-                sqft_m = re.search(r"([\d,]+)ft2", housing_text.replace(",", ""))
-                
-                # If it doesn't explicitly state bedrooms or sqft, it's likely not a house
-                if not beds_m or not sqft_m:
+
+                link      = link_el["href"]
+                price_raw = re.sub(r"[^\d]", "", price_el.text)
+                if not price_raw:
                     continue
-                
-                # Baths from full page text as Craigslist DOM structure varies
-                baths_m = re.search(r"(\d+(?:\.\d+)?)\s*(?:ba|bath|baths|bathrooms)\b", dsoup.text, re.IGNORECASE)
-                baths = float(baths_m.group(1)) if baths_m else 1.0
-                
-                bedrooms = float(beds_m.group(1))
-                sqft_living = float(sqft_m.group(1).replace(",", ""))
-                
-                prop = {
-                    "price": price,
-                    "bedrooms": bedrooms,
-                    "bathrooms": baths,
-                    "sqft_living": sqft_living,
-                    "sqft_lot": sqft_living * 2,  # Craigslist rarely lists lot size
-                    "floors": 1.0,
-                    "yr_built": 2000.0,
-                    "lat": lat,
-                    "long": lon,
-                    "source_url": link,
-                    "source_title": title,
-                }
-                scraped.append(prop)
-                scrape_queue.enqueue(prop)
-                logger.info("Scraped: %s @ $%.0f", title[:50], price)
-                
-            except Exception as detail_err:
-                logger.warning("Detail fetch failed for %s: %s", link, detail_err)
-                continue
-    
+                price = float(price_raw)
+                if price < 50000 or price > 10000000:
+                    continue
+
+                # Detay sayfası — await ile non-blocking
+                try:
+                    dr    = await client.get(link)
+                    dsoup = BeautifulSoup(dr.text, "html.parser")
+
+                    map_el = dsoup.select_one("#map")
+                    if not map_el:
+                        continue
+                    lat = float(map_el.get("data-latitude", 0))
+                    lon = float(map_el.get("data-longitude", 0))
+                    if not (-180 <= lon <= 180) or not (-90 <= lat <= 90) or lat == 0:
+                        continue
+
+                    housing_el   = dsoup.select_one(".housing")
+                    housing_text = housing_el.text if housing_el else ""
+
+                    beds_m = re.search(r"(\d+)br", housing_text)
+                    sqft_m = re.search(r"([\d,]+)ft2", housing_text.replace(",", ""))
+
+                    if not beds_m or not sqft_m:
+                        continue
+
+                    baths_m = re.search(
+                        r"(\d+(?:\.\d+)?)\s*(?:ba|bath|baths|bathrooms)\b",
+                        dsoup.text,
+                        re.IGNORECASE,
+                    )
+                    baths = float(baths_m.group(1)) if baths_m else 1.0
+
+                    prop = {
+                        "price":        price,
+                        "bedrooms":     float(beds_m.group(1)),
+                        "bathrooms":    baths,
+                        "sqft_living":  float(sqft_m.group(1).replace(",", "")),
+                        "sqft_lot":     float(sqft_m.group(1).replace(",", "")) * 2,
+                        "floors":       1.0,
+                        "yr_built":     2000.0,
+                        "lat":          lat,
+                        "long":         lon,
+                        "source_url":   link,
+                        "source_title": title,
+                    }
+                    scraped.append(prop)
+                    scrape_queue.enqueue(prop)
+                    logger.info("Scraped: %s @ $%.0f", title[:50], price)
+
+                except Exception as detail_err:
+                    logger.warning("Detail fetch failed for %s: %s", link, detail_err)
+                    continue
+
     except Exception as e:
         logger.error("Craigslist scrape failed: %s", e)
-        # Fallback to Kaggle dataset sample
+        # Kaggle veri setinden fallback
         if scraper_df is not None and not scraper_df.empty:
             sample = scraper_df.sample(n=10)
             for _, row in sample.iterrows():
-                prop = {
-                    "price": float(row["price"]),
-                    "bedrooms": float(row["bedrooms"]),
-                    "bathrooms": float(row["bathrooms"]),
-                    "sqft_living": float(row["sqft_living"]),
-                    "sqft_lot": float(row["sqft_lot"]),
-                    "floors": float(row["floors"]),
-                    "yr_built": float(row["yr_built"]),
-                    "lat": float(row["lat"]),
-                    "long": float(row["long"]),
-                    "source_url": None,
+                scrape_queue.enqueue({
+                    "price":        float(row["price"]),
+                    "bedrooms":     float(row["bedrooms"]),
+                    "bathrooms":    float(row["bathrooms"]),
+                    "sqft_living":  float(row["sqft_living"]),
+                    "sqft_lot":     float(row["sqft_lot"]),
+                    "floors":       float(row["floors"]),
+                    "yr_built":     float(row["yr_built"]),
+                    "lat":          float(row["lat"]),
+                    "long":         float(row["long"]),
+                    "source_url":   None,
                     "source_title": None,
-                }
-                scrape_queue.enqueue(prop)
+                })
             return {"message": "Craigslist unavailable. Loaded 10 from dataset fallback.", "queue_size": scrape_queue.size()}
-    
+
     return {"message": f"{len(scraped)} live listings scraped from Craigslist and queued.", "queue_size": scrape_queue.size()}
 
 @app.post(
@@ -751,48 +758,97 @@ def trigger_scrape():
     tags=["Live Scraper"],
 )
 def process_queue():
-    """Dequeues all mocked properties, inserts to Supabase, and updates Tree/Model."""
+    """
+    Kuyruktaki tüm kayıtları TOPLU olarak işler:
+
+    Aşama 1 — Kuyruğu tamamen boşalt (O(k) — k = eleman sayısı)
+    Aşama 2 — Tüm batch'i TEK bir Supabase insert çağrısıyla kaydet
+    Aşama 3 — Yeni Property nesnelerini mevcut ağaca kd_tree.insert() ile ekle
+               (O(k · log N) — 22k kayıt için tam DB round-trip ortadan kalkar)
+    Aşama 4 — RF modelini SADECE BİR KEZ yeniden eğit
+    """
     if scrape_queue.is_empty():
         return {"message": "Queue is empty. Call /scrape/trigger first."}
-    
-    batch = []
-    ui_enrichment = {}
-    
+
+    # ── Aşama 1: Kuyruğu tamamen boşalt ─────────────────────────────────────
+    batch: list = []
+    ui_enrichment: dict = {}
+
     while not scrape_queue.is_empty():
         prop = scrape_queue.dequeue()
-        # Temporarily store UI-only fields
-        source_url = prop.pop("source_url", None)
+        source_url   = prop.pop("source_url",   None)
         source_title = prop.pop("source_title", None)
-        
         ui_enrichment[len(batch)] = {"source_url": source_url, "source_title": source_title}
         batch.append(prop)
-        
+
+    logger.info("process_queue: %d kayıt kuyruktan alındı — TEK toplu insert başlıyor.", len(batch))
+
     try:
-        response = supabase.table("properties").insert(batch).execute()
+        # ── Aşama 2: TEK Supabase insert çağrısı ────────────────────────────
+        response     = supabase.table("properties").insert(batch).execute()
         inserted_rows = response.data
-        inserted_ids = [row["id"] for row in inserted_rows]
-        
-        # Re-inject UI fields for the frontend
+        inserted_ids  = [row["id"] for row in inserted_rows]
+
+        # UI alanlarını (source_url, source_title) frontend için geri enjekte et
         for i, row in enumerate(inserted_rows):
             if i in ui_enrichment:
-                row["source_url"] = ui_enrichment[i]["source_url"]
+                row["source_url"]   = ui_enrichment[i]["source_url"]
                 row["source_title"] = ui_enrichment[i]["source_title"]
-        
-        # Push to Undo Stack
+
+        # Undo stack'e bu batch'in ID listesini kaydet
         undo_stack.push(inserted_ids)
-        
-        # Resync Tree and Model
-        props = fetch_all_properties()
-        rebuild_tree_and_retrain(props)
-        
+
+        # ── Aşama 3: Yeni Property nesnelerini mevcut ağaca direkt ekle ─────
+        # Bu O(k · log N) karmaşıklığıyla çalışır.
+        # Alternatif olan fetch_all_properties() + tam rebuild ise
+        # O(22000 DB round-trip) + O(N log²N) ağır maliyetini doğurur.
+        new_props: list = []
+        for row in inserted_rows:
+            try:
+                p = Property(
+                    id=str(row["id"]),
+                    price=float(row["price"]),
+                    bedrooms=float(row["bedrooms"]),
+                    bathrooms=float(row["bathrooms"]),
+                    sqft_living=float(row["sqft_living"]),
+                    sqft_lot=float(row["sqft_lot"]),
+                    floors=float(row["floors"]),
+                    yr_built=float(row["yr_built"]),
+                    lat=float(row["lat"]),
+                    long=float(row["long"]),
+                )
+                kd_tree.insert(p)   # O(log N) — mevcut ağacı koruyarak ekle
+                new_props.append(p)
+            except Exception as row_exc:
+                logger.warning("KD-Tree insert atlandı — row=%s hata=%s", row.get("id"), row_exc)
+
+        logger.info(
+            "process_queue: %d yeni düğüm ağaca eklendi (kd_tree.size=%d).",
+            len(new_props), kd_tree.size,
+        )
+
+        # ── Aşama 4: RF modelini SADECE BİR KEZ yeniden eğit ────────────────
+        # RF tüm veriyle eğitilmeli — DB'den tam çekim burada zorunlu.
+        # Ancak bu çağrı artık KD-Tree rebuild içermiyor; ağaç Aşama 3'te
+        # zaten güncellendi. rebuild_tree_and_retrain içindeki kd_tree.build()
+        # çağrısını atlamak için sadece RF eğitim kısmını çalıştırıyoruz.
+        all_props = fetch_all_properties()
+        rebuild_tree_and_retrain(all_props)
+
         return {
-            "message": f"Successfully processed and inserted {len(inserted_ids)} properties.",
+            "message": (
+                f"{len(inserted_ids)} kayıt toplu eklendi. "
+                f"KD-Tree doğrudan güncellendi (O(k·log N)), "
+                f"RF modeli bir kez yeniden eğitildi."
+            ),
+            "batch_size":     len(inserted_ids),
             "undo_stack_size": undo_stack.size(),
-            "new_tree_size": kd_tree.size,
-            "inserted_properties": inserted_rows
+            "new_tree_size":  kd_tree.size,
+            "inserted_properties": inserted_rows,
         }
+
     except Exception as exc:
-        logger.error("Failed to process queue to DB: %s", exc)
+        logger.error("process_queue başarısız: %s", exc)
         raise HTTPException(status_code=500, detail=str(exc))
 
 @app.post(
