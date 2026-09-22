@@ -1,36 +1,40 @@
 # Real Estate ML Tree & KD-Tree Scraper (Explainable PropTech)
 
-Bu proje, emlak fiyat tahmini ve arama özelliklerini modern bir UI ile sunan uçtan uca (end-to-end) bir "Açıklanabilir PropTech" sistemidir. Üniversite jürisi için hazırlanmıştır.
+This project is an end-to-end Explainable PropTech system for real-estate search and price prediction, delivered with a modern web UI.
 
-## Özellikler
-- **Mekânsal Arama (Spatial Search):** Özel yapım KD-Tree veri yapısı kullanılarak `O(√N + k)` karmaşıklığında hızlı arama.
-- **Açıklanabilir Fiyat Tahmini (XAI):** Global Random Forest modeli ile lokal Gaussian RBF Kernel kombinasyonu sayesinde, tahminlerin yanında benzer mülkleri (comparables) ve modele ait güven skorunu gösterir.
-- **Canlı Veri Kazıma (Live Scraper):** Asenkron Craigslist scraper'ı, Node (Bağlı Liste) tabanlı FIFO Queue yapısıyla çalışır. Toplu (batch) olarak `O(k log N)` hızında KD-Tree'ye aktarır. LIFO Stack yapısıyla son işlemleri geri alma (undo) özelliği vardır.
-- **Modern UI:** Karanlık/Aydınlık mod destekli, interaktif Leaflet.js tabanlı arayüz.
+## Features
+- **Spatial Search:** Fast radius search with a custom KD-Tree (`O(√N + k)` under typical distribution assumptions).
+- **Explainable Price Prediction (XAI):** Hybrid prediction pipeline (global Random Forest + local Gaussian RBF weighting) with confidence score and comparable properties.
+- **Live Data Ingestion:** Async Craigslist scraper with custom FIFO queue + LIFO undo stack and batch insertion flow.
+- **Modern UI:** Interactive Leaflet-based frontend with light/dark mode.
 
-## Ekip İçin Hızlı Başlangıç (Tek Tıkla Çalıştırma)
+## Quick Start
 
-Projede veritabanı (Supabase) bağlantılarının bulunduğu `.env` dosyası repoya dahil edilmiştir. Docker kurulu olan herhangi bir bilgisayarda projeyi ayağa kaldırmak için tek bir dosya çalıştırmanız yeterlidir.
+### 1) Configure environment variables
+Create your local `.env` from `.env.example` and fill in your own Supabase credentials:
 
-### Windows Kullanıcıları İçin
-Proje dizinindeki `start.bat` dosyasına çift tıklayarak çalıştırın veya terminalden şu komutu girin:
+```bash
+cp .env.example .env
+```
+
+### 2) Start the app (Docker)
+
+#### Windows
 ```cmd
 start.bat
 ```
 
-### macOS / Linux Kullanıcıları İçin
-Terminalden aşağıdaki komutu girerek projeyi başlatabilirsiniz:
+#### macOS / Linux
 ```bash
 ./start.sh
 ```
 
-### Uygulamaya Erişim
-Docker indirme ve derleme işlemlerini bitirip uygulamayı başlattıktan sonra:
-- **Kullanıcı Arayüzü (UI):** [http://localhost:8080/](http://localhost:8080/)
-- **API Dokümantasyonu (Swagger):** [http://localhost:8080/docs](http://localhost:8080/docs)
-- **API Sağlık Durumu:** [http://localhost:8080/health](http://localhost:8080/health)
+### 3) Access
+- **Frontend UI:** [http://localhost:8080/](http://localhost:8080/)
+- **Swagger docs:** [http://localhost:8080/docs](http://localhost:8080/docs)
+- **Health check:** [http://localhost:8080/health](http://localhost:8080/health)
 
-*(Not: İlk çalıştırmada, uygulama veritabanından yaklaşık 22.000 satır veriyi çekip bellekte KD-Tree inşa edecek ve Random Forest modelini eğitecektir. Bu nedenle uygulamanın hazır olması 30-90 saniye sürebilir.)*
+> On first startup, the app loads the dataset from Supabase, builds the in-memory KD-Tree, and trains the model. This can take roughly 30-90 seconds.
 
-## Mimari Dokümantasyon
-Projenin algoritmaları, veri yapıları karmaşıklık analizleri, formülleri ve sistem darboğaz analizleri ile ilgili detaylı ve akademik bilgi için lütfen [TECHNICAL_REPORT.md](TECHNICAL_REPORT.md) dosyasını okuyun.
+## Documentation
+For architecture, algorithm, and system-level details, see [TECHNICAL_REPORT.md](TECHNICAL_REPORT.md).

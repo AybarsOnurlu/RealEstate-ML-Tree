@@ -1,4 +1,8 @@
-# .env (Ekip ile paylaşım için bilerek yoruma alındı)
+# Local environment files
+.env
+.env.*
+!.env.example
+
 __pycache__/
 *.pyc
 *.pyo
