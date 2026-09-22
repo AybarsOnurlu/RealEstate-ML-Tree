@@ -634,8 +634,8 @@ def benchmark(
 )
 async def trigger_scrape():
     """
-    Craigslist Seattle'dan canlı emlak ilanlarını çekip kuyruğa ekler.
-    httpx.AsyncClient kullanılır → event loop tamamen non-blocking kalır.
+    Fetches live real-estate listings from Craigslist Seattle and enqueues them.
+    Uses httpx.AsyncClient to keep the event loop fully non-blocking.
     """
 
     HEADERS = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
@@ -644,18 +644,18 @@ async def trigger_scrape():
     scraped = []
 
     try:
-        # ── Tek bir AsyncClient örneği tüm session boyunca yeniden kullanılır ──
+        # Reuse a single AsyncClient instance for the full session
         async with httpx.AsyncClient(
             headers=HEADERS,
             follow_redirects=True,
             timeout=httpx.Timeout(connect=8.0, read=15.0, write=5.0, pool=5.0),
         ) as client:
 
-            # İlan listesi sayfası — await ile non-blocking
+            # Listing page fetch (non-blocking)
             resp = await client.get(CL_LIST_URL)
             soup = BeautifulSoup(resp.text, "html.parser")
             listings = soup.select("li.cl-static-search-result")
-            random.shuffle(listings)  # her trigger farklı ilanlar getirsin
+            random.shuffle(listings)  # vary returned listings per trigger
 
             for li in listings:
                 if len(scraped) >= 15:
@@ -679,7 +679,7 @@ async def trigger_scrape():
                 if price < 50000 or price > 10000000:
                     continue
 
-                # Detay sayfası — await ile non-blocking
+                # Detail page fetch (non-blocking)
                 try:
                     dr    = await client.get(link)
                     dsoup = BeautifulSoup(dr.text, "html.parser")
@@ -731,7 +731,7 @@ async def trigger_scrape():
 
     except Exception as e:
         logger.error("Craigslist scrape failed: %s", e)
-        # Kaggle veri setinden fallback
+        # Fallback to Kaggle dataset sample
         if scraper_df is not None and not scraper_df.empty:
             sample = scraper_df.sample(n=10)
             for _, row in sample.iterrows():
@@ -759,18 +759,18 @@ async def trigger_scrape():
 )
 def process_queue():
     """
-    Kuyruktaki tüm kayıtları TOPLU olarak işler:
+    Processes all queued records in bulk:
 
-    Aşama 1 — Kuyruğu tamamen boşalt (O(k) — k = eleman sayısı)
-    Aşama 2 — Tüm batch'i TEK bir Supabase insert çağrısıyla kaydet
-    Aşama 3 — Yeni Property nesnelerini mevcut ağaca kd_tree.insert() ile ekle
-               (O(k · log N) — 22k kayıt için tam DB round-trip ortadan kalkar)
-    Aşama 4 — RF modelini SADECE BİR KEZ yeniden eğit
+    Step 1 — Fully drain queue (O(k), k = queued item count)
+    Step 2 — Persist full batch with a single Supabase insert call
+    Step 3 — Insert new Property objects into current tree via kd_tree.insert()
+             (O(k · log N), avoids full DB round-trip overhead)
+    Step 4 — Retrain RF model only once
     """
     if scrape_queue.is_empty():
         return {"message": "Queue is empty. Call /scrape/trigger first."}
 
-    # ── Aşama 1: Kuyruğu tamamen boşalt ─────────────────────────────────────
+    # Step 1: Drain queue completely
     batch: list = []
     ui_enrichment: dict = {}
 
@@ -781,27 +781,26 @@ def process_queue():
         ui_enrichment[len(batch)] = {"source_url": source_url, "source_title": source_title}
         batch.append(prop)
 
-    logger.info("process_queue: %d kayıt kuyruktan alındı — TEK toplu insert başlıyor.", len(batch))
+    logger.info("process_queue: %d records dequeued — starting single bulk insert.", len(batch))
 
     try:
-        # ── Aşama 2: TEK Supabase insert çağrısı ────────────────────────────
+        # Step 2: Single Supabase insert call
         response     = supabase.table("properties").insert(batch).execute()
         inserted_rows = response.data
         inserted_ids  = [row["id"] for row in inserted_rows]
 
-        # UI alanlarını (source_url, source_title) frontend için geri enjekte et
+        # Re-inject UI fields (source_url, source_title) for frontend use
         for i, row in enumerate(inserted_rows):
             if i in ui_enrichment:
                 row["source_url"]   = ui_enrichment[i]["source_url"]
                 row["source_title"] = ui_enrichment[i]["source_title"]
 
-        # Undo stack'e bu batch'in ID listesini kaydet
+        # Save batch IDs to undo stack
         undo_stack.push(inserted_ids)
 
-        # ── Aşama 3: Yeni Property nesnelerini mevcut ağaca direkt ekle ─────
-        # Bu O(k · log N) karmaşıklığıyla çalışır.
-        # Alternatif olan fetch_all_properties() + tam rebuild ise
-        # O(22000 DB round-trip) + O(N log²N) ağır maliyetini doğurur.
+        # Step 3: Insert new Property objects directly into current tree
+        # This runs in O(k · log N).
+        # The alternative (fetch_all_properties + full rebuild) is much heavier.
         new_props: list = []
         for row in inserted_rows:
             try:
@@ -817,29 +816,26 @@ def process_queue():
                     lat=float(row["lat"]),
                     long=float(row["long"]),
                 )
-                kd_tree.insert(p)   # O(log N) — mevcut ağacı koruyarak ekle
+                kd_tree.insert(p)   # O(log N) while preserving current tree
                 new_props.append(p)
             except Exception as row_exc:
-                logger.warning("KD-Tree insert atlandı — row=%s hata=%s", row.get("id"), row_exc)
+                logger.warning("KD-Tree insert skipped — row=%s error=%s", row.get("id"), row_exc)
 
         logger.info(
-            "process_queue: %d yeni düğüm ağaca eklendi (kd_tree.size=%d).",
+            "process_queue: %d new nodes inserted into tree (kd_tree.size=%d).",
             len(new_props), kd_tree.size,
         )
 
-        # ── Aşama 4: RF modelini SADECE BİR KEZ yeniden eğit ────────────────
-        # RF tüm veriyle eğitilmeli — DB'den tam çekim burada zorunlu.
-        # Ancak bu çağrı artık KD-Tree rebuild içermiyor; ağaç Aşama 3'te
-        # zaten güncellendi. rebuild_tree_and_retrain içindeki kd_tree.build()
-        # çağrısını atlamak için sadece RF eğitim kısmını çalıştırıyoruz.
+        # Step 4: Retrain RF model only once
+        # RF should be trained with the full dataset.
         all_props = fetch_all_properties()
         rebuild_tree_and_retrain(all_props)
 
         return {
             "message": (
-                f"{len(inserted_ids)} kayıt toplu eklendi. "
-                f"KD-Tree doğrudan güncellendi (O(k·log N)), "
-                f"RF modeli bir kez yeniden eğitildi."
+                f"{len(inserted_ids)} records inserted in bulk. "
+                f"KD-Tree updated directly (O(k·log N)), "
+                f"RF model retrained once."
             ),
             "batch_size":     len(inserted_ids),
             "undo_stack_size": undo_stack.size(),
@@ -848,7 +844,7 @@ def process_queue():
         }
 
     except Exception as exc:
-        logger.error("process_queue başarısız: %s", exc)
+        logger.error("process_queue failed: %s", exc)
         raise HTTPException(status_code=500, detail=str(exc))
 
 @app.post(
